@@ -1,0 +1,12 @@
+{
+  "appId": "com.pollar.stellarp2p",
+  "appName": "Pollar Stellar Offline",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#07090e",
+    "allowMixedContent": true
+  }
+}

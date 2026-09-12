@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#07090e" />
+    <meta name="description" content="Pollar - Billetera Web y Android para Pagos Offline en Stellar con Go Core, Árbol de Merkle y Sincronización Automática" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Pollar • Offline Stellar P2P Wallet (Go Engine)</title>
+    <!-- Load Go WebAssembly runtime support -->
+    <script src="/wasm_exec.js"></script>
+    <script>
+      // Register Service Worker for 100% offline support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            console.log('[Pollar PWA] Service Worker registrado:', reg.scope);
+          }).catch((err) => {
+            console.warn('[Pollar PWA] Fallo de registro de Service Worker:', err);
+          });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
