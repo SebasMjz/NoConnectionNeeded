@@ -7,12 +7,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output (Vite)
 dist
 dist-ssr
-*.local
+
+# Environment / secrets (keep .env.example tracked)
 .env
 .env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+*.local
 
 # Editor directories and files
 .vscode/*
@@ -24,3 +33,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Capacitor (generated)
+.capacitor/
+
+# Android artifacts not covered by android/.gitignore
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+
+# Go / WebAssembly build artifacts (public/pollar_core.wasm is tracked on purpose)
+core-go/*.wasm
+core-go/*.exe
+*.test
+
+# Rust / Soroban contract build output
+target/
+
+# graphify generated knowledge graph
+graphify-out/

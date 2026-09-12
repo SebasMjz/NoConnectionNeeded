@@ -7,6 +7,9 @@ import P2PPaymentTerminal from './components/P2PPaymentTerminal';
 import SyncManager from './components/SyncManager';
 import DualDeviceSimulator from './components/DualDeviceSimulator';
 import LinkAccountModal from './components/LinkAccountModal';
+import SettingsView from './components/SettingsView';
+import WalletRegistry from './components/WalletRegistry';
+import P2PTransportSelector from './components/P2PTransportSelector';
 import {
   Wallet,
   Send,
@@ -28,6 +31,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isTransportOpen, setIsTransportOpen] = useState(false);
+
 
   const { 
     currentUser, 
@@ -155,7 +160,7 @@ function AppContent() {
             onOpenLinkModal={() => setIsLinkModalOpen(true)} 
           />
         )}
-        {activeTab === 'send' && <P2PPaymentTerminal />}
+        {activeTab === 'send' && <P2PPaymentTerminal onOpenTransport={() => setIsTransportOpen(true)} />}
         {activeTab === 'sync' && <SyncManager />}
         {activeTab === 'lab' && <DualDeviceSimulator />}
 
@@ -187,121 +192,23 @@ function AppContent() {
         </div>
       </nav>
 
-      {/* User Profile & Settings Bottom Sheet */}
+      {/* Settings Bottom Sheet */}
       {isSettingsOpen && (
         <div className="pollar-modal-overlay" onClick={() => setIsSettingsOpen(false)}>
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {currentUser.avatar ? (
-                  <img src={currentUser.avatar} alt="Avatar" style={{ width: 48, height: 48, borderRadius: 16, objectFit: 'cover' }} />
-                ) : (
-                  <div className="pollar-user-avatar" style={{ width: 48, height: 48, borderRadius: 16, fontSize: 18 }}>
-                    {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                )}
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>{currentUser.name || 'Usuario'}</h3>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    {currentUser.email || currentUser.publicKey?.slice(0, 16) + '...'}
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
-                className="pollar-icon-btn"
-              >
-                <X size={18} />
-              </button>
-            </div>
+            <SettingsView
+              onClose={() => setIsSettingsOpen(false)}
+              onNavigateRegistry={() => { setIsSettingsOpen(false); setIsWalletRegistryOpen(true); }}
+            />
+          </div>
+        </div>
+      )}
 
-            {/* Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => { setIsLinkModalOpen(true); setIsSettingsOpen(false); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 16px',
-                  borderRadius: 18,
-                  background: 'var(--bg-card-muted)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'left'
-                }}
-              >
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Link2 size={18} />
-                </div>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Vincular Cuenta Stellar</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Importar clave secreta S... o pública G...</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => { requestFriendbotFunding(deviceA.publicKey); setIsSettingsOpen(false); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 16px',
-                  borderRadius: 18,
-                  background: 'var(--bg-card-muted)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'left'
-                }}
-              >
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--color-amber-bg)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Fondeo Friendbot</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+10,000 XLM Testnet gratis</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Bottom Actions */}
-            <div style={{ display: 'flex', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-              <button
-                onClick={() => { resetDemoData(); setIsSettingsOpen(false); }}
-                style={{
-                  flex: 1,
-                  height: 48,
-                  borderRadius: 14,
-                  background: 'var(--color-rose-bg)',
-                  color: 'var(--color-rose)',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <RotateCcw size={16} /> Reiniciar
-              </button>
-              <button
-                onClick={() => { logout(); setIsSettingsOpen(false); }}
-                style={{
-                  flex: 1,
-                  height: 48,
-                  borderRadius: 14,
-                  background: '#F1F5F9',
-                  color: 'var(--text-main)',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <LogOut size={16} /> Salir
-              </button>
-            </div>
+      {/* Wallet Registry Modal */}
+      {isWalletRegistryOpen && (
+        <div className="pollar-modal-overlay" onClick={() => setIsWalletRegistryOpen(false)}>
+          <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
+            <WalletRegistry onClose={() => setIsWalletRegistryOpen(false)} />
           </div>
         </div>
       )}

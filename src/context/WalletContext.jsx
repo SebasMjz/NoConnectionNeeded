@@ -9,6 +9,7 @@ import {
   buildRealMerkleTree,
   computeMerkleLeafHash
 } from '../services/stellarCrypto';
+import { getBiometricService } from '../services/BiometricService';
 import confetti from 'canvas-confetti';
 
 const WalletContext = createContext();
@@ -16,6 +17,9 @@ const WalletContext = createContext();
 const STORAGE_KEY = 'pollar_offline_wallet_v2_real';
 
 const AUTH_STORAGE_KEY = 'pollar_auth_user';
+const USERS_STORAGE_KEY = 'pollar_users';
+const SETTINGS_KEY = 'pollar_settings';
+const BIOMETRIC_CREDS_KEY = 'pollar_biometric_creds';
 
 export function WalletProvider({ children }) {
   // Device Selection: 'device_a' (Payer) | 'device_b' (Payee/Merchant) | 'dual_sim' (Split View)
@@ -35,6 +39,15 @@ export function WalletProvider({ children }) {
       console.warn('Error reading auth state:', e);
     }
     return null;
+  });
+
+  // App Settings (biometric, theme, etc.)
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { biometricEnabled: false, darkMode: true };
   });
 
   // Device A (Payer) Wallet State with genuine Stellar Ed25519 Keys
@@ -452,6 +465,65 @@ export function WalletProvider({ children }) {
     return user;
   };
 
+  // Register a new user with email + password hash
+  const registerUser = async (email, password) => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@')) throw new Error('Email inválido');
+    if (!password || password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+
+    const storedUsers = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '{}');
+    if (storedUsers[cleanEmail]) throw new Error('Este email ya está registrado');
+
+    const hashBuffer = await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(password + cleanEmail));
+    const hashHex = Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    storedUsers[cleanEmail] = { passwordHash: hashHex, createdAt: Date.now() };
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(storedUsers));
+    return loginWithEmail(cleanEmail);
+  };
+
+  // Login with email + password
+  const loginWithPassword = async (email, password) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const storedUsers = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '{}');
+    const stored = storedUsers[cleanEmail];
+    if (!stored) throw new Error('No existe una cuenta con este email');
+
+    const hashBuffer = await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(password + cleanEmail));
+    const hashHex = Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    if (hashHex !== stored.passwordHash) throw new Error('Contraseña incorrecta');
+    return loginWithEmail(cleanEmail);
+  };
+
+  // Update app settings
+  const updateSettings = (newSettings) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+  };
+
+  // ─── Biometric helpers (delegates to BiometricService) ─────────────────
+  const biometricService = getBiometricService();
+
+  const isBiometricAvailable = () => biometricService.isAvailable;
+
+  const checkBiometricAvailable = async () => {
+    return await biometricService.initialize();
+  };
+
+  const registerBiometric = async (userId) => {
+    return await biometricService.registerBiometric(userId);
+  };
+
+  const authenticateWithBiometric = async (userId) => {
+    return await biometricService.authenticateWithBiometric(userId);
+  };
+
   const loginWithGoogle = (customEmail = null) => {
     const email = customEmail || 'usuario.pollar@gmail.com';
     const user = {
@@ -523,6 +595,7 @@ export function WalletProvider({ children }) {
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(BIOMETRIC_CREDS_KEY);
   };
 
   // Reset demo state
@@ -559,10 +632,18 @@ export function WalletProvider({ children }) {
     <WalletContext.Provider value={{
       currentUser,
       loginWithEmail,
+      loginWithPassword,
+      registerUser,
       loginWithGoogle,
       loginWithWallet,
       loginAsPreset,
       logout,
+      settings,
+      updateSettings,
+      isBiometricAvailable,
+      checkBiometricAvailable,
+      registerBiometric,
+      authenticateWithBiometric,
       activeDevice,
       setActiveDevice,
       isOnline: effectiveOnline,

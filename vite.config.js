@@ -8,8 +8,16 @@ export default defineConfig({
     tailwindcss(),
     react()
   ],
+  base: '/',
   define: {
     'global': 'globalThis',
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        crossOriginLoading: false
+      }
+    }
   },
   server: {
     host: '0.0.0.0',
