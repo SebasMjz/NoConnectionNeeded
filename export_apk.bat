@@ -29,8 +29,12 @@ if %ERRORLEVEL% EQU 0 (
     echo android\app\build\outputs\apk\debug\app-debug.apk
     echo =========================================================
 ) else (
-    echo [INFO] Si necesitas compilar con Android Studio:
-    echo        Ejecuta: npx cap open android
+    echo =========================================================
+    echo [AVISO] Gradle requiere Java 17 o 21 (No Java 25).
+    echo Para compilar sin configurar variables de entorno:
+    echo 1. Abre Android Studio con: npx cap open android
+    echo 2. Ve a Build ^> Build Bundle(s) / APK(s) ^> Build APK(s)
+    echo =========================================================
 )
 
 cd ..

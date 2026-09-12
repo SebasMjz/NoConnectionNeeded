@@ -8,7 +8,12 @@ import {
   Lock,
   WifiOff,
   Wifi,
-  RefreshCw
+  RefreshCw,
+  Terminal,
+  Store,
+  CheckCircle2,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 
 export default function DualDeviceSimulator() {
@@ -25,12 +30,13 @@ export default function DualDeviceSimulator() {
     transactions
   } = useWallet();
 
-  const [simAmount, setSimAmount] = useState('3.00');
-  const [simMemo, setSimMemo] = useState('Café');
+  const [simAmount, setSimAmount] = useState('2.50');
+  const [simMemo, setSimMemo] = useState('Compra Tienda');
   const [log, setLog] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const availableOfflineA = deviceA.derivedOffline - deviceA.spentOffline;
+  const quickAmounts = ['1.00', '2.50', '5.00', '10.00'];
 
   const addLog = (msg, type = 'info') => {
     setLog(prev => [{
@@ -43,14 +49,16 @@ export default function DualDeviceSimulator() {
 
   const handleSimulate = async () => {
     setIsProcessing(true);
-    addLog(`[A] Pago offline ${simAmount} USDT → B`, 'info');
+    addLog(`[A] Iniciando pago offline de $${simAmount} USDT → Comercio B`, 'info');
     try {
       const tx = await createOfflinePayment(deviceB.stellarAddress || deviceB.publicKey, simAmount, simMemo);
-      addLog(`[A] Firma Ed25519: ${tx.payerSignature.substring(0, 12)}...`, 'success');
-      addLog(`[P2P] Transmitiendo...`, 'p2p');
-      await new Promise(r => setTimeout(r, 500));
+      addLog(`[A] Firma Ed25519 generada: ${tx.payerSignature.substring(0, 14)}...`, 'success');
+      addLog(`[P2P] Transmitiendo paquete de datos cifrado por canal offline...`, 'p2p');
+      
+      await new Promise(r => setTimeout(r, 450));
       const finalized = await receiveAndCounterSign(tx, 'device_b');
-      addLog(`[B] Contrafirma OK. Merkle: ${finalized.merkleLeafHash.substring(0, 12)}...`, 'success');
+      addLog(`[B] Contrafirma validada. Merkle Leaf: ${finalized.merkleLeafHash.substring(0, 14)}...`, 'success');
+      addLog(`[OK] Handshake bilateral completado con éxito (Nonce #${tx.payload.nonce})`, 'success');
     } catch (err) {
       addLog(`[Error] ${err.message}`, 'error');
     }
@@ -58,136 +66,205 @@ export default function DualDeviceSimulator() {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
 
-      {/* Header */}
-      <div className="glass-panel p-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Zap className="w-4 h-4 text-[#a855f7]" /> Simulador P2P
-          </h3>
-          <p className="text-[10px] text-[#94a3b8]">Prueba completa de 2 dispositivos</p>
-        </div>
-        <button
-          onClick={() => setIsSimulatingOffline(!isSimulatingOffline)}
-          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 border transition-all ${
-            isOnline
-              ? 'bg-[rgba(16,185,129,0.1)] text-[#10b981] border-[rgba(16,185,129,0.25)]'
-              : 'bg-[rgba(244,63,94,0.1)] text-[#f43f5e] border-[rgba(244,63,94,0.25)]'
-          }`}
-        >
-          {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-          {isOnline ? 'Online' : 'Offline'}
-        </button>
-      </div>
-
-      {/* Device A */}
-      <div className="glass-panel p-4 border-t-2 border-t-[#00f2fe] space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-[#00f2fe]" />
-            <span className="text-xs font-bold text-white">Pagador (A)</span>
-          </div>
-          <span className="text-[9px] font-mono text-[#00f2fe]">Nonce #{deviceA.currentNonce}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 rounded-lg bg-[rgba(10,14,24,0.7)] border border-[rgba(255,255,255,0.04)]">
-            <span className="text-[9px] text-[#64748b] uppercase block">Main</span>
-            <span className="text-sm font-black text-white font-mono">{deviceA.mainBalance.toFixed(2)}</span>
-          </div>
-          <div className="p-2 rounded-lg bg-[rgba(0,242,254,0.06)] border border-[rgba(0,242,254,0.2)]">
-            <span className="text-[9px] text-[#00f2fe] uppercase font-bold flex items-center gap-1">
-              <Lock className="w-2.5 h-2.5" /> Offline
-            </span>
-            <span className="text-sm font-black text-[#00f2fe] font-mono">{availableOfflineA.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Device B */}
-      <div className="glass-panel p-4 border-t-2 border-t-[#10b981] space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-[#10b981]" />
-            <span className="text-xs font-bold text-white">Cobrador (B)</span>
-          </div>
-          <span className="text-[9px] font-mono text-[#10b981]">POS</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 rounded-lg bg-[rgba(10,14,24,0.7)] border border-[rgba(255,255,255,0.04)]">
-            <span className="text-[9px] text-[#64748b] uppercase block">Main</span>
-            <span className="text-sm font-black text-white font-mono">{deviceB.mainBalance.toFixed(2)}</span>
-          </div>
-          <div className="p-2 rounded-lg bg-[rgba(16,185,129,0.06)] border border-[rgba(16,185,129,0.2)]">
-            <span className="text-[9px] text-[#10b981] uppercase font-bold flex items-center gap-1">
-              <ArrowDownLeft className="w-2.5 h-2.5" /> Recibido
-            </span>
-            <span className="text-sm font-black text-[#10b981] font-mono">+{deviceB.receivedOffline.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="glass-panel p-4 space-y-3">
-        <div className="grid grid-cols-2 gap-2.5">
+      {/* Simulator Mode Header */}
+      <div className="pollar-panel" style={{ padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <label className="text-[10px] text-[#94a3b8] mb-0.5 block">Monto</label>
-            <input
-              type="number"
-              step="0.01"
-              value={simAmount}
-              onChange={(e) => setSimAmount(e.target.value)}
-              className="w-full glass-input text-sm font-bold font-mono py-1.5"
-            />
+            <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Zap size={18} color="var(--pollar-blue)" /> Simulador Bilateral P2P
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Prueba la firma Ed25519 y contrafirma entre ambos roles en vivo
+            </p>
           </div>
-          <div>
-            <label className="text-[10px] text-[#94a3b8] mb-0.5 block">Concepto</label>
-            <input
-              type="text"
-              value={simMemo}
-              onChange={(e) => setSimMemo(e.target.value)}
-              className="w-full glass-input text-xs py-1.5"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
           <button
-            onClick={handleSimulate}
-            disabled={isProcessing || availableOfflineA < parseFloat(simAmount) || parseFloat(simAmount) <= 0}
-            className="flex-1 btn-primary py-2.5 text-xs font-bold flex items-center justify-center gap-1.5"
+            onClick={() => setIsSimulatingOffline(!isSimulatingOffline)}
+            className={`pollar-status-badge ${isOnline ? 'online' : 'offline'}`}
           >
-            <Send className="w-3.5 h-3.5" />
-            {isProcessing ? 'Procesando...' : 'Simular Pago P2P'}
-          </button>
-          <button
-            onClick={() => syncToStellarNetwork('LAB_SYNC')}
-            disabled={isSyncing || transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length === 0}
-            className="px-3 py-2.5 rounded-xl bg-[rgba(16,185,129,0.15)] hover:bg-[rgba(16,185,129,0.25)] text-[#10b981] border border-[rgba(16,185,129,0.25)] transition-all"
-          >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+            <span>{isOnline ? 'Online' : 'Offline'}</span>
           </button>
         </div>
       </div>
 
-      {/* Log Console */}
-      <div className="glass-panel p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">Consola</h3>
-          <span className="text-[9px] text-[#4a5568] font-mono">{log.length}</span>
+      {/* Devices Overview Cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        
+        {/* Device A (Payer) */}
+        <div className="pollar-panel" style={{ borderLeft: '4px solid var(--pollar-blue)', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Smartphone size={16} />
+              </div>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Dispositivo A (Pagador)</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {deviceA.publicKey.substring(0, 10)}...{deviceA.publicKey.substring(deviceA.publicKey.length - 4)}
+                </span>
+              </div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '2px 8px', borderRadius: 12, fontFamily: 'var(--font-mono)' }}>
+              Nonce #{deviceA.currentNonce}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo Principal</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>${deviceA.mainBalance.toFixed(2)}</span>
+            </div>
+            <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0, 98, 255, 0.2)' }}>
+              <span style={{ fontSize: 10, color: 'var(--pollar-blue)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Bóveda Offline</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>${availableOfflineA.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
-        <div className="h-32 overflow-y-auto space-y-1 font-mono text-[10px] p-2 rounded-lg bg-[rgba(7,9,14,0.9)] border border-[rgba(255,255,255,0.04)]">
+
+        {/* Device B (Merchant POS) */}
+        <div className="pollar-panel" style={{ borderLeft: '4px solid var(--color-emerald)', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Store size={16} />
+              </div>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Dispositivo B (Comercio POS)</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {deviceB.publicKey.substring(0, 10)}...{deviceB.publicKey.substring(deviceB.publicKey.length - 4)}
+                </span>
+              </div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--color-emerald)', background: 'var(--color-emerald-bg)', padding: '2px 8px', borderRadius: 12 }}>
+              POS Cobrador
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo Principal</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>${deviceB.mainBalance.toFixed(2)}</span>
+            </div>
+            <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--color-emerald-bg)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+              <span style={{ fontSize: 10, color: 'var(--color-emerald)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Recibido Offline</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--color-emerald)', fontFamily: 'var(--font-mono)' }}>+${deviceB.receivedOffline.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Simulation Controls Panel */}
+      <div className="pollar-panel">
+        <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>Controles de Pago Simulado</h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Quick Amounts */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {quickAmounts.map((amt) => (
+              <button
+                key={amt}
+                type="button"
+                onClick={() => setSimAmount(amt)}
+                style={{
+                  flex: 1,
+                  padding: '9px 4px',
+                  borderRadius: 12,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  fontFamily: 'var(--font-mono)',
+                  border: simAmount === amt ? '1.5px solid var(--pollar-blue)' : '1px solid var(--border-subtle)',
+                  background: simAmount === amt ? 'var(--pollar-blue-light)' : '#FFFFFF',
+                  color: simAmount === amt ? 'var(--pollar-blue)' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ${amt}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Monto</label>
+              <input
+                type="number"
+                step="0.01"
+                value={simAmount}
+                onChange={(e) => setSimAmount(e.target.value)}
+                className="pollar-input"
+                style={{ height: 44, fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Concepto</label>
+              <input
+                type="text"
+                value={simMemo}
+                onChange={(e) => setSimMemo(e.target.value)}
+                className="pollar-input"
+                style={{ height: 44, fontSize: 13 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+            <button
+              onClick={handleSimulate}
+              disabled={isProcessing || availableOfflineA < parseFloat(simAmount) || parseFloat(simAmount) <= 0}
+              className="pollar-btn-primary"
+              style={{ flex: 1 }}
+            >
+              <Send size={16} />
+              {isProcessing ? 'Firmando y transmitiendo...' : 'Ejecutar Pago P2P'}
+            </button>
+            <button
+              onClick={() => syncToStellarNetwork('LAB_SYNC')}
+              disabled={isSyncing || transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length === 0}
+              className="pollar-btn-outline-blue"
+              style={{ width: 52, flexShrink: 0 }}
+              title="Sincronizar Lote en Stellar"
+            >
+              <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Terminal / Handshake Console Log */}
+      <div style={{
+        background: '#0F172A',
+        borderRadius: 24,
+        padding: 18,
+        color: '#FFFFFF',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.15)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Terminal size={14} /> Consola Criptográfica (NCN Handshake)
+          </span>
+          <span style={{ fontSize: 10, color: '#64748B', fontFamily: 'var(--font-mono)' }}>{log.length} registros</span>
+        </div>
+
+        <div style={{ height: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 11, paddingRight: 4 }}>
           {log.length === 0 ? (
-            <div className="text-center text-[#4a5568] py-10">Ejecuta una transacción</div>
+            <div style={{ textAlign: 'center', color: '#64748B', paddingTop: 40 }}>
+              Pulsa en 'Ejecutar Pago P2P' para ver el protocolo bilateral en tiempo real
+            </div>
           ) : (
             log.map((item) => (
-              <div key={item.id} className="flex items-start gap-1.5">
-                <span className="text-[#4a5568] shrink-0">{item.time}</span>
-                <span className={
-                  item.type === 'success' ? 'text-[#10b981]' :
-                  item.type === 'p2p' ? 'text-[#00f2fe]' :
-                  item.type === 'error' ? 'text-[#f43f5e]' : 'text-[#94a3b8]'
-                }>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ color: '#64748B', flexShrink: 0 }}>{item.time}</span>
+                <span style={{
+                  color: item.type === 'success' ? '#34D399' :
+                         item.type === 'p2p' ? '#38BDF8' :
+                         item.type === 'error' ? '#F87171' : '#E2E8F0'
+                }}>
                   {item.msg}
                 </span>
               </div>
@@ -195,6 +272,7 @@ export default function DualDeviceSimulator() {
           )}
         </div>
       </div>
+
     </div>
   );
 }

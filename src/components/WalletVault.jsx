@@ -14,12 +14,18 @@ import {
   ChevronRight,
   Copy,
   Check,
-  Zap
+  Zap,
+  Sparkles,
+  ShieldCheck,
+  Store,
+  Plus
 } from 'lucide-react';
 
 export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const {
+    activeDevice,
     deviceA,
+    deviceB,
     allocateOfflineFunds,
     returnFundsToMain,
     refreshOnlineBalance,
@@ -28,11 +34,15 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     transactions
   } = useWallet();
 
+  const isMerchant = activeDevice === 'device_b';
+  const currentAccount = isMerchant ? deviceB : deviceA;
+
   const [transferAmount, setTransferAmount] = useState('');
   const [activeAction, setActiveAction] = useState('allocate');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [showAllocation, setShowAllocation] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [isFunding, setIsFunding] = useState(false);
 
   const availableInMain = Math.max(0, deviceA.mainBalance - deviceA.derivedOffline);
   const unspentOffline = Math.max(0, deviceA.derivedOffline - deviceA.spentOffline);
@@ -52,10 +62,10 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     try {
       if (activeAction === 'allocate') {
         allocateOfflineFunds(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} asignados a Bóveda Offline` });
+        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} bloqueados en Bóveda Offline` });
       } else {
         returnFundsToMain(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} devueltos a Billetera Principal` });
+        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} liberados a Billetera Principal` });
       }
       setTransferAmount('');
     } catch (err) {
@@ -73,282 +83,346 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     }
   };
 
+  const handleFundFriendbot = async () => {
+    setIsFunding(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      await requestFriendbotFunding(currentAccount.publicKey);
+      setFeedback({ type: 'success', message: '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' });
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Error al conectar con Friendbot' });
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
   const copyAddress = () => {
-    navigator.clipboard.writeText(deviceA.publicKey);
+    navigator.clipboard.writeText(currentAccount.publicKey);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
 
-      {/* Main Wallet Card */}
-      <div className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-[#0e1626] via-[#101b33] to-[#07090e] border border-[rgba(0,242,254,0.25)] shadow-[0_12px_36px_rgba(0,0,0,0.6)]">
-        <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-[rgba(0,242,254,0.12)] blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-36 h-36 rounded-full bg-[rgba(121,40,202,0.15)] blur-3xl pointer-events-none" />
+      {/* Main Digital eWallet Balance Card */}
+      <div className={`pollar-balance-card ${isMerchant ? 'merchant' : ''}`}>
+        <div className="pollar-card-ambient-circle" />
 
-        <div className="relative z-10 space-y-4">
-          {/* Top Row */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-[#00f2fe] uppercase tracking-wider">Saldo On-Chain</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981]" />
+        {/* Card Top: Tag + Refresh */}
+        <div className="pollar-card-top">
+          <span className="pollar-card-tag">
+            {isMerchant ? 'Terminal POS Comercio' : 'Billetera Principal'}
+          </span>
+
+          <button
+            onClick={() => refreshOnlineBalance(currentAccount.publicKey)}
+            disabled={isRefreshingBalance}
+            className="pollar-card-refresh"
+            title="Actualizar saldo"
+          >
+            <RefreshCw size={15} className={isRefreshingBalance ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {/* Balance Amount */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>Saldo Total</span>
+          <div className="pollar-balance-amount">
+            <span>${currentAccount.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="pollar-balance-asset">{currentAccount.asset}</span>
+          </div>
+
+          {!isMerchant ? (
+            <div className="pollar-card-subline">
+              <span>Libre: <strong>{availableInMain.toFixed(2)}</strong></span>
+              <span>•</span>
+              <span>Bóveda Offline: <strong>{unspentOffline.toFixed(2)}</strong></span>
             </div>
+          ) : (
+            <div className="pollar-card-subline">
+              <span>Cobros Offline: <strong>+{deviceB.receivedOffline.toFixed(2)} {deviceB.asset}</strong></span>
+            </div>
+          )}
+        </div>
+
+        {/* Address Pill */}
+        <div className="pollar-card-address" onClick={copyAddress}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
+            {currentAccount.publicKey}
+          </span>
+          {copiedAddress ? <Check size={14} color="#6EE7B7" /> : <Copy size={14} opacity={0.7} />}
+        </div>
+
+        {/* 4 Circular Action Buttons */}
+        <div className="pollar-card-actions">
+          <button onClick={() => onNavigate?.('send')} className="pollar-action-btn">
+            <div className="pollar-action-icon-circle" style={{ color: 'var(--pollar-blue)' }}>
+              <Send size={20} />
+            </div>
+            <span className="pollar-action-label">Pagar</span>
+          </button>
+
+          <button onClick={() => onNavigate?.('send')} className="pollar-action-btn">
+            <div className="pollar-action-icon-circle" style={{ color: 'var(--color-emerald)' }}>
+              <ArrowDownLeft size={20} />
+            </div>
+            <span className="pollar-action-label">Cobrar</span>
+          </button>
+
+          <button onClick={() => setShowAllocation(!showAllocation)} className="pollar-action-btn">
+            <div className="pollar-action-icon-circle" style={{ color: 'var(--pollar-blue)' }}>
+              <Lock size={20} />
+            </div>
+            <span className="pollar-action-label">Bóveda</span>
+          </button>
+
+          <button onClick={handleFundFriendbot} disabled={isFunding} className="pollar-action-btn">
+            <div className="pollar-action-icon-circle" style={{ color: 'var(--color-amber)' }}>
+              {isFunding ? <RefreshCw size={20} className="animate-spin" /> : <Sparkles size={20} />}
+            </div>
+            <span className="pollar-action-label">+10k XLM</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Contacts / Devices (Recent Transfers Row from Figma) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Transferencias Rápidas</h3>
+        <div className="pollar-transfers-scroll">
+          {/* Add contact */}
+          <button onClick={onOpenLinkModal} className="pollar-transfer-item">
+            <div className="pollar-transfer-circle add">
+              <Plus size={20} />
+            </div>
+            <span className="pollar-transfer-name">Vincular</span>
+          </button>
+
+          {/* Comercio B */}
+          <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
+            <div className="pollar-transfer-circle" style={{ background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', border: '2px solid rgba(16, 185, 129, 0.3)' }}>
+              POS
+            </div>
+            <span className="pollar-transfer-name">Comercio B</span>
+          </button>
+
+          {/* Pagador A */}
+          <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
+            <div className="pollar-transfer-circle" style={{ background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', border: '2px solid rgba(0, 98, 255, 0.3)' }}>
+              P-A
+            </div>
+            <span className="pollar-transfer-name">Pagador A</span>
+          </button>
+
+          {/* Friendbot */}
+          <button onClick={handleFundFriendbot} className="pollar-transfer-item">
+            <div className="pollar-transfer-circle" style={{ background: 'var(--color-amber-bg)', color: 'var(--color-amber)', border: '2px solid rgba(245, 158, 11, 0.3)' }}>
+              ⚡
+            </div>
+            <span className="pollar-transfer-name">Friendbot</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Offline Vault Allocation Panel (Collapsible) */}
+      {showAllocation && !isMerchant && (
+        <div className="pollar-panel animate-in fade-in slide-in-from-top-3 duration-200">
+          <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Lock size={18} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>Bóveda Offline</h4>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cupo para pagar sin internet</p>
+              </div>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
+              {unspentOffline.toFixed(2)} USDT
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', background: '#EBF0F7', padding: 4, borderRadius: 14, gap: 4 }}>
             <button
-              onClick={refreshOnlineBalance}
-              disabled={isRefreshingBalance}
-              className="p-1.5 rounded-lg bg-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.12)] text-[#94a3b8] hover:text-white transition-all"
+              onClick={() => { setActiveAction('allocate'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 800,
+                background: activeAction === 'allocate' ? '#FFFFFF' : 'transparent',
+                color: activeAction === 'allocate' ? 'var(--pollar-blue)' : 'var(--text-muted)',
+                boxShadow: activeAction === 'allocate' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none'
+              }}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingBalance ? 'animate-spin text-[#00f2fe]' : ''}`} />
+              Bloquear a Bóveda
+            </button>
+            <button
+              onClick={() => { setActiveAction('return'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 800,
+                background: activeAction === 'return' ? '#FFFFFF' : 'transparent',
+                color: activeAction === 'return' ? 'var(--color-emerald)' : 'var(--text-muted)',
+                boxShadow: activeAction === 'return' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none'
+              }}
+            >
+              Liberar a Principal
             </button>
           </div>
 
-          {/* Balance */}
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-black text-white font-mono tracking-tight">
-                {deviceA.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className="text-base font-bold text-[#00f2fe]">{deviceA.asset}</span>
-            </div>
-            <p className="text-[10px] text-[#94a3b8] font-mono mt-0.5">
-              Libre: <strong className="text-white">{availableInMain.toFixed(2)}</strong> · Bloqueado: <strong className="text-[#f59e0b]">{deviceA.derivedOffline.toFixed(2)}</strong>
-            </p>
-          </div>
-
-          {/* Address */}
-          <button
-            onClick={copyAddress}
-            className="w-full flex items-center justify-between p-2 rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.06)] text-[10px] font-mono hover:bg-[rgba(0,0,0,0.5)] transition-all"
-          >
-            <span className="text-[#94a3b8] truncate">{deviceA.publicKey}</span>
-            {copiedAddress ? <Check className="w-3 h-3 text-[#10b981] shrink-0" /> : <Copy className="w-3 h-3 text-[#64748b] shrink-0" />}
-          </button>
-
-          {/* Vault Sub-Card */}
-          <div className="p-3.5 rounded-xl bg-[rgba(0,0,0,0.4)] border border-[rgba(0,242,254,0.15)] space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#00f2fe] font-bold flex items-center gap-1.5">
-                <Lock className="w-3 h-3" /> Bóveda Offline
-              </span>
-              <span className="font-mono text-[11px] font-black text-gradient-cyan">
-                {unspentOffline.toFixed(2)} disponible
-              </span>
-            </div>
-            <div className="w-full bg-[rgba(255,255,255,0.06)] h-1.5 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-[#00f2fe] to-[#f43f5e]"
-                style={{ width: `${usagePercentage}%` }}
+          <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+                className="pollar-input"
+                style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', paddingRight: 60 }}
               />
-            </div>
-            <div className="flex justify-between text-[9px] text-[#64748b] font-mono">
-              <span>Gastado: {deviceA.spentOffline.toFixed(2)}</span>
-              <span>Nonce: #{deviceA.currentNonce}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-4 gap-2.5">
-        <button
-          onClick={() => onNavigate?.('send')}
-          className="p-3 rounded-xl bg-[rgba(16,21,34,0.85)] hover:bg-[rgba(16,21,34,1)] border border-[rgba(255,255,255,0.06)] flex flex-col items-center gap-1.5 transition-all group"
-        >
-          <div className="p-2 rounded-lg bg-[rgba(0,242,254,0.15)] text-[#00f2fe] group-hover:scale-110 transition-transform">
-            <Send className="w-4 h-4" />
-          </div>
-          <span className="text-[10px] font-bold text-white">Pagar</span>
-        </button>
-
-        <button
-          onClick={() => onNavigate?.('send')}
-          className="p-3 rounded-xl bg-[rgba(16,21,34,0.85)] hover:bg-[rgba(16,21,34,1)] border border-[rgba(255,255,255,0.06)] flex flex-col items-center gap-1.5 transition-all group"
-        >
-          <div className="p-2 rounded-lg bg-[rgba(16,185,129,0.15)] text-[#10b981] group-hover:scale-110 transition-transform">
-            <ArrowDownLeft className="w-4 h-4" />
-          </div>
-          <span className="text-[10px] font-bold text-white">Cobrar</span>
-        </button>
-
-        <button
-          onClick={onOpenLinkModal}
-          className="p-3 rounded-xl bg-[rgba(16,21,34,0.85)] hover:bg-[rgba(16,21,34,1)] border border-[rgba(255,255,255,0.06)] flex flex-col items-center gap-1.5 transition-all group"
-        >
-          <div className="p-2 rounded-lg bg-[rgba(168,85,247,0.15)] text-[#a855f7] group-hover:scale-110 transition-transform">
-            <Key className="w-4 h-4" />
-          </div>
-          <span className="text-[10px] font-bold text-white">Vincular</span>
-        </button>
-
-        <button
-          onClick={() => requestFriendbotFunding()}
-          className="p-3 rounded-xl bg-[rgba(16,21,34,0.85)] hover:bg-[rgba(16,21,34,1)] border border-[rgba(255,255,255,0.06)] flex flex-col items-center gap-1.5 transition-all group"
-        >
-          <div className="p-2 rounded-lg bg-[rgba(245,158,11,0.15)] text-[#f59e0b] group-hover:scale-110 transition-transform">
-            <Zap className="w-4 h-4" />
-          </div>
-          <span className="text-[10px] font-bold text-white">+10k XLM</span>
-        </button>
-      </div>
-
-      {/* Allocation Panel */}
-      <div className="glass-panel overflow-hidden">
-        <button
-          onClick={() => setShowAllocation(!showAllocation)}
-          className="w-full flex items-center justify-between p-4 text-left"
-        >
-          <div className="flex items-center gap-2">
-            <ArrowRightLeft className="w-4 h-4 text-[#00f2fe]" />
-            <span className="text-sm font-bold text-white">Derivación de Saldo</span>
-          </div>
-          <ChevronRight className={`w-4 h-4 text-[#64748b] transition-transform ${showAllocation ? 'rotate-90' : ''}`} />
-        </button>
-
-        {showAllocation && (
-          <div className="px-4 pb-4 space-y-3 border-t border-[rgba(255,255,255,0.06)] pt-3">
-            <div className="flex rounded-lg bg-[rgba(10,14,24,0.9)] p-0.5 border border-[rgba(255,255,255,0.06)]">
-              <button
-                onClick={() => { setActiveAction('allocate'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${
-                  activeAction === 'allocate'
-                    ? 'bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-[#07090e]'
-                    : 'text-[#94a3b8]'
-                }`}
-              >
-                Bloquear
-              </button>
-              <button
-                onClick={() => { setActiveAction('return'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
-                className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${
-                  activeAction === 'return'
-                    ? 'bg-gradient-to-r from-[#10b981] to-[#059669] text-white'
-                    : 'text-[#94a3b8]'
-                }`}
-              >
-                Liberar
-              </button>
+              <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)' }}>
+                {deviceA.asset}
+              </span>
             </div>
 
-            <form onSubmit={handleTransfer} className="space-y-2.5">
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={transferAmount}
-                  onChange={(e) => setTransferAmount(e.target.value)}
-                  className="w-full glass-input text-lg font-mono font-bold pr-14 py-2"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#00f2fe]">
-                  {deviceA.asset}
-                </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[0.25, 0.50, 0.75, 1.0].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => handleQuickPercent(pct)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 4px',
+                    borderRadius: 12,
+                    background: '#F1F5F9',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-muted)'
+                  }}
+                >
+                  {pct * 100}%
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="submit"
+              disabled={!transferAmount || parseFloat(transferAmount) <= 0}
+              className={activeAction === 'allocate' ? 'pollar-btn-primary' : 'pollar-btn-emerald'}
+            >
+              {activeAction === 'allocate' ? 'Bloquear Fondos para Offline' : 'Devolver a Billetera Principal'}
+            </button>
+
+            {feedback.message && (
+              <div style={{
+                padding: 12,
+                borderRadius: 14,
+                fontSize: 12,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
+                color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)'
+              }}>
+                {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                <span>{feedback.message}</span>
               </div>
-
-              <div className="flex gap-1.5">
-                {[0.25, 0.50, 0.75, 1.0].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() => handleQuickPercent(pct)}
-                    className="flex-1 py-1 rounded-md bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.06)] text-[10px] font-mono font-bold text-[#94a3b8] hover:text-white transition-all"
-                  >
-                    {pct * 100}%
-                  </button>
-                ))}
-              </div>
-
-              <button
-                type="submit"
-                disabled={!transferAmount || parseFloat(transferAmount) <= 0}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  activeAction === 'allocate' ? 'btn-primary' : 'btn-emerald'
-                }`}
-              >
-                {activeAction === 'allocate' ? 'Asignar a Bóveda' : 'Devolver a Principal'}
-              </button>
-
-              {feedback.message && (
-                <div className={`p-2.5 rounded-lg flex items-center gap-2 text-[11px] font-medium ${
-                  feedback.type === 'success'
-                    ? 'bg-[rgba(16,185,129,0.12)] text-[#10b981] border border-[rgba(16,185,129,0.25)]'
-                    : 'bg-[rgba(244,63,94,0.12)] text-[#f43f5e] border border-[rgba(244,63,94,0.25)]'
-                }`}>
-                  {feedback.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
-                  <span>{feedback.message}</span>
-                </div>
-              )}
-            </form>
-          </div>
-        )}
-      </div>
-
-      {/* Pending Summary */}
-      {pendingCount > 0 && (
-        <div className="glass-panel p-4 flex items-center justify-between border-l-4 border-l-[#f59e0b]">
-          <div className="flex items-center gap-3">
-            <Clock className="w-5 h-5 text-[#f59e0b]" />
-            <div>
-              <span className="text-xs font-bold text-white block">{pendingCount} transacciones pendientes</span>
-              <span className="text-[10px] text-[#94a3b8]">Esperando sincronización con Stellar</span>
-            </div>
-          </div>
-          <span className="text-sm font-black text-[#f59e0b] font-mono">{totalPending.toFixed(2)} USDT</span>
+            )}
+          </form>
         </div>
       )}
 
-      {/* Recent Transactions */}
-      <div className="glass-panel p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">Actividad Reciente</h3>
-          <span className="text-[10px] text-[#64748b] font-mono">{transactions.length} total</span>
+      {/* Pending Sync Banner */}
+      {pendingCount > 0 && (
+        <div 
+          onClick={() => onNavigate?.('sync')}
+          style={{
+            padding: 16,
+            borderRadius: 20,
+            background: 'var(--color-amber-bg)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 14, background: 'rgba(245, 158, 11, 0.2)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock size={20} />
+            </div>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#92400E', display: 'block' }}>{pendingCount} pagos offline pendientes</span>
+              <span style={{ fontSize: 11, color: '#B45309' }}>Toca para sincronizar en Stellar</span>
+            </div>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#92400E' }}>
+            {totalPending.toFixed(2)} USDT
+          </span>
+        </div>
+      )}
+
+      {/* Latest Transactions List (From Figma Design) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Últimas Transacciones</h3>
+          <button 
+            onClick={() => onNavigate?.('sync')}
+            style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)', background: 'transparent' }}
+          >
+            Ver todas ({transactions.length})
+          </button>
         </div>
 
         {recentTxs.length === 0 ? (
-          <div className="py-8 text-center space-y-2">
-            <Coins className="w-6 h-6 text-[#64748b] mx-auto opacity-50" />
-            <p className="text-[11px] text-[#64748b]">Sin actividad aún</p>
-            <p className="text-[10px] text-[#4a5568]">Realiza tu primer pago en la pestaña Enviar</p>
+          <div className="pollar-panel" style={{ textAlign: 'center', padding: 32, alignItems: 'center' }}>
+            <Coins size={36} opacity={0.3} color="var(--text-muted)" />
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Sin movimientos aún</p>
+            <p style={{ fontSize: 11, color: 'var(--text-light)' }}>Toca en Pagar para realizar tu primera transacción</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {recentTxs.map((tx, idx) => (
-              <div
-                key={tx.txHash || idx}
-                className="flex items-center justify-between p-2.5 rounded-xl bg-[rgba(10,14,24,0.6)] border border-[rgba(255,255,255,0.04)]"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`p-1.5 rounded-lg ${
-                    tx.status === 'SYNCED_ONCHAIN'
-                      ? 'bg-[rgba(16,185,129,0.15)] text-[#10b981]'
-                      : 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]'
-                  }`}>
-                    {tx.status === 'SYNCED_ONCHAIN'
-                      ? <CheckCircle2 className="w-3.5 h-3.5" />
-                      : <Clock className="w-3.5 h-3.5" />
-                    }
+              <div key={tx.txHash || idx} className="pollar-tx-item">
+                <div className="pollar-tx-left">
+                  <div className="pollar-tx-icon" style={{
+                    background: tx.status === 'SYNCED_ONCHAIN' ? 'var(--color-emerald-bg)' : 'var(--color-amber-bg)',
+                    color: tx.status === 'SYNCED_ONCHAIN' ? 'var(--color-emerald)' : 'var(--color-amber)'
+                  }}>
+                    {tx.status === 'SYNCED_ONCHAIN' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
                   </div>
-                  <div className="min-w-0">
-                    <span className="text-[11px] font-bold text-white block truncate">{tx.payload.memo || 'Pago offline'}</span>
-                    <span className="text-[9px] text-[#64748b] font-mono">
-                      Nonce #{tx.payload.nonce} · {tx.status === 'SYNCED_ONCHAIN' ? 'Confirmado' : 'Pendiente'}
+                  <div>
+                    <span className="pollar-tx-title" style={{ display: 'block' }}>
+                      {tx.payload.memo || 'Pago Offline Pollar'}
+                    </span>
+                    <span className="pollar-tx-meta">
+                      Nonce #{tx.payload.nonce} · {tx.status === 'SYNCED_ONCHAIN' ? 'Confirmado On-Chain' : 'Guardado Offline'}
                     </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-2">
-                  <span className={`text-xs font-black font-mono block ${
-                    tx.status === 'SYNCED_ONCHAIN' ? 'text-[#10b981]' : 'text-[#f59e0b]'
-                  }`}>
-                    -{tx.payload.amount.toFixed(2)}
+
+                <div style={{ textAlign: 'right' }}>
+                  <span className={tx.status === 'SYNCED_ONCHAIN' ? 'pollar-tx-amount-out' : 'pollar-tx-amount-in'} style={{ display: 'block' }}>
+                    -${tx.payload.amount.toFixed(2)}
                   </span>
-                  <span className="text-[9px] text-[#64748b]">{tx.payload.asset}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>{tx.payload.asset}</span>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
     </div>
   );
 }

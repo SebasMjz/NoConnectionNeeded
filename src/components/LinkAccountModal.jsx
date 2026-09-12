@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { generateRealStellarKeypair } from '../services/stellarCrypto';
 import {
   X,
   Key,
@@ -7,7 +8,12 @@ import {
   Check,
   RefreshCw,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  ExternalLink,
+  PlusCircle,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 
 export default function LinkAccountModal({ isOpen, onClose }) {
@@ -22,21 +28,24 @@ export default function LinkAccountModal({ isOpen, onClose }) {
   const [inputKey, setInputKey] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [isFunding, setIsFunding] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   if (!isOpen) return null;
 
   const handleLink = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
+    if (!inputKey.trim()) return;
     setFeedback({ type: '', message: '' });
     try {
-      const result = await linkCustomAccount(inputKey);
+      const result = await linkCustomAccount(inputKey.trim());
       setFeedback({
         type: 'success',
-        message: `Vinculada: ${result.balance.toFixed(2)} ${result.asset}`
+        message: `Cuenta vinculada exitosamente. Saldo: ${result.balance.toFixed(2)} ${result.asset}`
       });
       setInputKey('');
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message });
+      setFeedback({ type: 'error', message: err.message || 'Error al vincular clave Stellar' });
     }
   };
 
@@ -45,109 +54,231 @@ export default function LinkAccountModal({ isOpen, onClose }) {
     setFeedback({ type: '', message: '' });
     try {
       await requestFriendbotFunding(deviceA.publicKey);
-      setFeedback({ type: 'success', message: 'Fondeada: +10,000 XLM Testnet' });
+      setFeedback({ 
+        type: 'success', 
+        message: '¡Recarga Confirmada! +10,000.00 XLM recibidos de Friendbot en Stellar Testnet' 
+      });
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Error al solicitar fondos a Friendbot' });
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
+  const handleGenerateNew = async () => {
+    setIsGenerating(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      const newKeys = generateRealStellarKeypair();
+      const res = await linkCustomAccount(newKeys.secretKey);
+      await requestFriendbotFunding(newKeys.publicKey);
+      setFeedback({
+        type: 'success',
+        message: `Nueva cuenta generada y fondeada con +10,000 XLM`
+      });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
+    } finally {
+      setIsGenerating(false);
     }
-    setIsFunding(false);
+  };
+
+  const copyPublicKey = () => {
+    navigator.clipboard.writeText(deviceA.publicKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md">
-      <div className="w-full max-w-lg bg-[#0a0e18] border border-[rgba(0,242,254,0.2)] rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
+    <div className="pollar-modal-overlay" onClick={onClose} style={{ zIndex: 100 }}>
+      <div 
+        className="pollar-modal-sheet" 
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[rgba(0,242,254,0.12)] text-[#00f2fe]">
-              <Wallet className="w-5 h-5" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 14, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Wallet size={20} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Vincular Cuenta</h3>
-              <p className="text-[10px] text-[#94a3b8]">Stellar Testnet</p>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Vincular Cuenta Stellar</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stellar Horizon Testnet / Soroban</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg bg-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.12)] text-[#94a3b8] hover:text-white transition-all"
-          >
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="pollar-icon-btn">
+            <X size={18} />
           </button>
         </div>
 
-        {/* Current Account */}
-        <div className="p-3 rounded-xl bg-[rgba(16,21,34,0.9)] border border-[rgba(255,255,255,0.06)] space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#94a3b8] uppercase font-semibold">Cuenta actual</span>
+        {/* Current Active Account Box */}
+        <div style={{
+          padding: 16,
+          borderRadius: 20,
+          background: 'var(--bg-card-muted)',
+          border: '1px solid var(--border-subtle)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Cuenta Activa (Pagador)
+            </span>
             <button
-              onClick={refreshOnlineBalance}
+              onClick={() => refreshOnlineBalance(deviceA.publicKey)}
               disabled={isRefreshingBalance}
-              className="text-[10px] text-[#00f2fe] font-bold flex items-center gap-1"
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--pollar-blue)',
+                background: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
             >
-              <RefreshCw className={`w-2.5 h-2.5 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
-              Actualizar
+              <RefreshCw size={13} className={isRefreshingBalance ? 'animate-spin' : ''} />
+              Actualizar Saldo
             </button>
           </div>
-          <div className="flex items-baseline justify-between">
+
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div>
-              <span className="text-xl font-black text-white font-mono">{deviceA.mainBalance.toFixed(2)}</span>
-              <span className="text-[10px] font-bold text-[#00f2fe] ml-1">{deviceA.asset}</span>
+              <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+                ${deviceA.mainBalance.toFixed(2)}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)', marginLeft: 4 }}>
+                {deviceA.asset}
+              </span>
             </div>
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[rgba(16,185,129,0.1)] text-[#10b981]">
-              Horizon
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              background: 'var(--color-emerald-bg)',
+              color: 'var(--color-emerald)',
+              padding: '3px 8px',
+              borderRadius: 12,
+              fontFamily: 'var(--font-mono)'
+            }}>
+              Horizon Live
             </span>
           </div>
-          <div className="text-[9px] font-mono text-[#64748b] truncate pt-1.5 border-t border-[rgba(255,255,255,0.04)]">
-            {deviceA.publicKey}
+
+          {/* Public Key snippet */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 12px',
+            borderRadius: 12,
+            background: '#FFFFFF',
+            border: '1px solid var(--border-subtle)'
+          }}>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>
+              {deviceA.publicKey}
+            </span>
+            <button onClick={copyPublicKey} style={{ background: 'none', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center' }}>
+              {copiedKey ? <Check size={15} color="var(--color-emerald)" /> : <Copy size={15} />}
+            </button>
           </div>
+
+          {/* Fondeo Friendbot Button */}
           <button
             onClick={handleFund}
             disabled={isFunding}
-            className="w-full py-2 rounded-lg bg-[rgba(0,242,254,0.08)] hover:bg-[rgba(0,242,254,0.15)] border border-[rgba(0,242,254,0.2)] text-[11px] font-bold text-[#00f2fe] flex items-center justify-center gap-1.5 transition-all"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              borderRadius: 14,
+              background: 'var(--color-amber-bg)',
+              border: '1.5px solid rgba(245, 158, 11, 0.3)',
+              color: '#B45309',
+              fontSize: 13,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease'
+            }}
           >
-            {isFunding ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            Friendbot (+10k XLM)
+            {isFunding ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                Solicitando a Friendbot (+10,000 XLM)...
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} color="#D97706" />
+                Fondeo Friendbot (+10,000 XLM Testnet)
+              </>
+            )}
           </button>
         </div>
 
-        {/* Link Form */}
-        <form onSubmit={handleLink} className="space-y-3">
-          <div>
-            <label className="text-[11px] font-semibold text-[#94a3b8] block mb-1">
-              Clave Secreta (S...) o Pública (G...)
+        {/* Link / Import Form */}
+        <form onSubmit={handleLink} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>
+              Importar Clave Stellar (Secreta S... o Pública G...)
             </label>
-            <div className="relative">
+            <div style={{ position: 'relative' }}>
               <input
                 type="text"
                 value={inputKey}
                 onChange={(e) => setInputKey(e.target.value)}
-                placeholder="S... o G..."
-                className="w-full glass-input text-[11px] font-mono py-2.5 pr-9"
+                placeholder="S... (Firmar) o G... (Solo Lectura)"
+                className="pollar-input"
+                style={{ fontSize: 12, fontFamily: 'var(--font-mono)', paddingRight: 40 }}
                 required
               />
-              <Key className="w-3.5 h-3.5 text-[#64748b] absolute right-3 top-1/2 -translate-y-1/2" />
+              <Key size={16} color="var(--text-light)" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }} />
             </div>
           </div>
 
           {feedback.message && (
-            <div className={`p-2.5 rounded-lg flex items-center gap-2 text-[11px] font-medium ${
-              feedback.type === 'success'
-                ? 'bg-[rgba(16,185,129,0.1)] text-[#10b981] border border-[rgba(16,185,129,0.2)]'
-                : 'bg-[rgba(244,63,94,0.1)] text-[#f43f5e] border border-[rgba(244,63,94,0.2)]'
-            }`}>
-              {feedback.type === 'success' ? <Check className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+            <div style={{
+              padding: 12,
+              borderRadius: 14,
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
+              color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)',
+              border: feedback.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(244, 63, 94, 0.2)'
+            }}>
+              {feedback.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
               <span>{feedback.message}</span>
             </div>
           )}
 
-          <div className="flex gap-2.5 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 btn-secondary py-2.5 text-xs">
-              Cerrar
+          <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+            <button
+              type="submit"
+              disabled={!inputKey.trim()}
+              className="pollar-btn-primary"
+              style={{ flex: 1 }}
+            >
+              <Zap size={16} /> Vincular Cuenta
             </button>
-            <button type="submit" disabled={!inputKey.trim()} className="flex-1 btn-primary py-2.5 text-xs">
-              Vincular
+            <button
+              type="button"
+              onClick={handleGenerateNew}
+              disabled={isGenerating}
+              className="pollar-btn-secondary"
+              style={{ flex: 1 }}
+            >
+              {isGenerating ? <RefreshCw size={16} className="animate-spin" /> : <PlusCircle size={16} />}
+              Generar Nueva
             </button>
           </div>
         </form>
+
       </div>
     </div>
   );

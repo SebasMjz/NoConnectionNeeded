@@ -1,199 +1,338 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
 import {
   CloudUpload,
   CheckCircle2,
   Clock,
   ArrowUpRight,
-  ShieldCheck,
   RefreshCw,
-  Layers,
   AlertCircle,
-  Radio
+  Radio,
+  ChevronDown,
+  GitBranch,
+  Layers,
+  ShieldCheck,
+  Zap,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export default function SyncManager() {
-  const {
-    transactions,
-    isOnline,
-    syncToStellarNetwork,
-    isSyncing,
-    lastSyncResult,
-    activeDevice
+  const { 
+    transactions, 
+    merkleTree, 
+    isOnline, 
+    syncToStellarNetwork, 
+    isSyncing, 
+    lastSyncResult 
   } = useWallet();
+
+  const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [showMerkleDetails, setShowMerkleDetails] = useState(false);
+  const [copiedRoot, setCopiedRoot] = useState(false);
 
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
   const syncedTxs = transactions.filter(t => t.status === 'SYNCED_ONCHAIN');
   const totalPending = pendingTxs.reduce((acc, t) => acc + t.payload.amount, 0);
 
   const handleSync = async () => {
+    setFeedback({ type: '', message: '' });
     try {
-      await syncToStellarNetwork('USER_MANUAL_CLICK');
+      const res = await syncToStellarNetwork('USER_MANUAL_CLICK');
+      setFeedback({ type: 'success', message: `Lote sincronizado con éxito en Stellar Ledger #${res.stellarLedger || 'Testnet'}` });
     } catch (err) {
-      alert('Error: ' + err.message);
+      setFeedback({ type: 'error', message: err.message || 'Error al sincronizar lote en Stellar' });
+    }
+  };
+
+  const copyMerkleRoot = () => {
+    if (merkleTree?.rootHash) {
+      navigator.clipboard.writeText(merkleTree.rootHash);
+      setCopiedRoot(true);
+      setTimeout(() => setCopiedRoot(false), 2000);
     }
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="glass-panel p-4 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#94a3b8] uppercase font-semibold">Pendientes</span>
-            <Clock className="w-4 h-4 text-[#f59e0b] opacity-50" />
+      {/* Metrics Header Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        
+        {/* Pending Offline Metric */}
+        <div className="pollar-panel" style={{ padding: 18, borderLeft: '4px solid var(--color-amber)', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Pendientes
+            </span>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--color-amber-bg)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock size={16} />
+            </div>
           </div>
-          <div className="text-3xl font-black text-[#f59e0b] font-mono">{pendingTxs.length}</div>
-          <span className="text-[10px] text-[#94a3b8] font-mono">{totalPending.toFixed(2)} USDT</span>
-        </div>
-        <div className="glass-panel p-4 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#94a3b8] uppercase font-semibold">Confirmadas</span>
-            <CheckCircle2 className="w-4 h-4 text-[#10b981] opacity-50" />
+          <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--color-amber)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
+            {pendingTxs.length}
           </div>
-          <div className="text-3xl font-black text-[#10b981] font-mono">{syncedTxs.length}</div>
-          <span className="text-[10px] text-[#10b981] font-mono">En Stellar</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+            ${totalPending.toFixed(2)} USDT offline
+          </span>
         </div>
+
+        {/* Synced On-Chain Metric */}
+        <div className="pollar-panel" style={{ padding: 18, borderLeft: '4px solid var(--color-emerald)', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Confirmadas
+            </span>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--color-emerald)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
+            {syncedTxs.length}
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-emerald)' }}>
+            En Stellar Testnet
+          </span>
+        </div>
+
       </div>
 
-      {/* Sync Button */}
-      <div className="glass-panel p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Radio className={`w-3.5 h-3.5 ${isOnline ? 'text-[#10b981] animate-pulse' : 'text-[#f43f5e]'}`} />
-            <span className="text-xs font-bold text-white">Liquidación On-Chain</span>
+      {/* Main Batch Synchronization Card */}
+      <div className="pollar-panel">
+        <div className="pollar-panel-header">
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CloudUpload size={18} color="var(--pollar-blue)" /> Sincronizador de Lote (Horizon)
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Comprime firmas Ed25519 bilaterales en una transacción on-chain
+            </p>
           </div>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-            isOnline
-              ? 'bg-[rgba(16,185,129,0.1)] text-[#10b981] border-[rgba(16,185,129,0.25)]'
-              : 'bg-[rgba(244,63,94,0.1)] text-[#f43f5e] border-[rgba(244,63,94,0.25)]'
-          }`}>
-            {isOnline ? 'Conectado' : 'Sin conexión'}
+          <span style={{
+            fontSize: 11,
+            fontWeight: 800,
+            padding: '4px 10px',
+            borderRadius: 20,
+            background: isOnline ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
+            color: isOnline ? 'var(--color-emerald)' : 'var(--color-rose)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            <Radio size={12} className={isOnline ? 'animate-pulse' : ''} />
+            {isOnline ? 'Red Lista' : 'Sin Conexión'}
           </span>
         </div>
 
         <button
           onClick={handleSync}
           disabled={isSyncing || pendingTxs.length === 0 || !isOnline}
-          className="w-full btn-primary py-3.5 text-sm font-bold flex items-center justify-center gap-2"
+          className="pollar-btn-primary"
         >
           {isSyncing ? (
             <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Sincronizando con Stellar...
+              <RefreshCw size={18} className="animate-spin" />
+              Transmitiendo a Stellar Horizon...
             </>
           ) : (
             <>
-              <CloudUpload className="w-4 h-4" />
-              Subir Lote ({pendingTxs.length} pendientes)
+              <CloudUpload size={18} />
+              Sincronizar Lote ({pendingTxs.length} transacciones)
             </>
           )}
         </button>
 
         {!isOnline && (
-          <div className="p-2.5 rounded-lg bg-[rgba(244,63,94,0.1)] text-[#f43f5e] border border-[rgba(244,63,94,0.2)] text-[11px] flex items-center gap-2">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>Conéctate a internet para sincronizar</span>
+          <div style={{
+            padding: 12,
+            borderRadius: 14,
+            background: 'var(--color-rose-bg)',
+            color: 'var(--color-rose)',
+            border: '1px solid rgba(244, 63, 94, 0.2)',
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <AlertCircle size={16} shrink={0} />
+            <span>Conéctate a internet o pulsa el botón Online en la barra superior para sincronizar.</span>
           </div>
         )}
 
+        {/* Feedback Alert */}
+        {feedback.message && (
+          <div style={{
+            padding: 14,
+            borderRadius: 14,
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
+            color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)',
+            border: feedback.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(244, 63, 94, 0.2)'
+          }}>
+            {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{feedback.message}</span>
+          </div>
+        )}
+
+        {/* Last Sync Result Box */}
         {lastSyncResult && (
-          <div className="p-3 rounded-xl bg-[rgba(16,185,129,0.1)] border border-[rgba(16,185,129,0.25)] space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-white font-bold text-xs">
-                <CheckCircle2 className="w-4 h-4 text-[#10b981]" />
-                <span>Confirmado en Stellar</span>
+          <div style={{
+            padding: 16,
+            borderRadius: 18,
+            background: 'var(--color-emerald-bg)',
+            border: '1.5px solid rgba(16, 185, 129, 0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)' }}>
+                <CheckCircle2 size={16} />
+                <span>Lote Confirmado en Stellar</span>
               </div>
               <a
                 href={lastSyncResult.stellarExpertUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[10px] text-[#00f2fe] font-bold flex items-center gap-1 hover:underline"
+                style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 4 }}
               >
-                Ver <ArrowUpRight className="w-3 h-3" />
+                StellarExpert <ArrowUpRight size={14} />
               </a>
             </div>
-            <div className="text-[10px] font-mono text-[#94a3b8] space-y-0.5">
-              <div className="truncate">Tx: {lastSyncResult.stellarTxHash}</div>
-              <div className="truncate">Merkle: {lastSyncResult.batchMerkleRoot?.substring(0, 24)}...</div>
+            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <strong>Tx Hash:</strong> {lastSyncResult.stellarTxHash}
+              </div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <strong>Merkle Root:</strong> {lastSyncResult.batchMerkleRoot}
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Active Device */}
-      <div className="glass-panel p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <ShieldCheck className="w-4 h-4 text-[#00f2fe]" />
-          <div>
-            <span className="text-[10px] text-[#94a3b8] uppercase block">Dispositivo</span>
-            <span className="text-xs font-bold text-white">
-              {activeDevice === 'device_b' ? 'B (Comercio)' : 'A (Pagador)'}
-            </span>
+      {/* Cryptographic Merkle Tree Details Card */}
+      <div className="pollar-panel">
+        <button
+          onClick={() => setShowMerkleDetails(!showMerkleDetails)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            background: 'transparent',
+            textAlign: 'left'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <GitBranch size={18} />
+            </div>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Árbol Criptográfico de Merkle</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{merkleTree?.leaves?.length || 0} hojas criptográficas generadas</span>
+            </div>
           </div>
-        </div>
-        <span className="text-[10px] text-[#00f2fe] font-mono">Broadcast listo</span>
+          <ChevronDown size={18} color="var(--text-light)" style={{ transform: showMerkleDetails ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+        </button>
+
+        {showMerkleDetails && (
+          <div style={{ paddingTop: 14, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{
+              padding: 12,
+              borderRadius: 14,
+              background: 'var(--bg-card-muted)',
+              border: '1px solid var(--border-subtle)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--text-main)',
+              wordBreak: 'break-all',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <strong style={{ color: 'var(--pollar-blue)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Merkle Root (SHA-256)</strong>
+                <button onClick={copyMerkleRoot} style={{ background: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700 }}>
+                  {copiedRoot ? <Check size={12} color="var(--color-emerald)" /> : <Copy size={12} />}
+                  {copiedRoot ? 'Copiado' : 'Copiar'}
+                </button>
+              </div>
+              {merkleTree.rootHash || '0000000000000000000000000000000000000000000000000000000000000000'}
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              El hash raíz comprime criptográficamente todo el lote offline en una única operación inmutable sobre el ledger de Stellar Horizon.
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Transaction List */}
-      <div className="glass-panel p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <Layers className="w-3.5 h-3.5 text-[#00f2fe]" /> Registro
+      {/* Audit Log / Transactions History Panel */}
+      <div className="pollar-panel">
+        <div className="pollar-panel-header">
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Layers size={18} color="var(--pollar-blue)" /> Registro de Transacciones del Lote
           </h3>
-          <span className="text-[10px] text-[#64748b] font-mono">{transactions.length}</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}>
+            {transactions.length}
+          </span>
         </div>
 
         {transactions.length === 0 ? (
-          <div className="py-6 text-center">
-            <Layers className="w-5 h-5 text-[#64748b] mx-auto opacity-40 mb-2" />
-            <p className="text-[11px] text-[#64748b]">Sin transacciones</p>
+          <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-light)', fontSize: 13 }}>
+            No hay transacciones registradas en este dispositivo
           </div>
         ) : (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {transactions.map((tx, idx) => (
               <div
                 key={tx.txHash || idx}
-                className="p-3 rounded-xl bg-[rgba(10,14,24,0.6)] border border-[rgba(255,255,255,0.04)] space-y-2"
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 16,
+                  background: 'var(--bg-card-muted)',
+                  border: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${
-                      tx.status === 'SYNCED_ONCHAIN'
-                        ? 'bg-[#10b981] shadow-[0_0_6px_#10b981]'
-                        : 'bg-[#f59e0b] shadow-[0_0_6px_#f59e0b]'
-                    }`} />
-                    <span className="text-xs font-bold text-white">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    background: tx.status === 'SYNCED_ONCHAIN' ? 'var(--color-emerald)' : 'var(--color-amber)'
+                  }} />
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>
                       {tx.payload.amount.toFixed(2)} {tx.payload.asset}
                     </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      Nonce #{tx.payload.nonce} · {tx.payload.memo || 'Pago Offline'}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    tx.status === 'SYNCED_ONCHAIN'
-                      ? 'bg-[rgba(16,185,129,0.1)] text-[#10b981] border-[rgba(16,185,129,0.25)]'
-                      : 'bg-[rgba(245,158,11,0.1)] text-[#f59e0b] border-[rgba(245,158,11,0.25)]'
-                  }`}>
-                    {tx.status === 'SYNCED_ONCHAIN' ? 'Confirmado' : 'Pendiente'}
-                  </span>
                 </div>
-                <div className="flex items-center justify-between text-[10px] font-mono text-[#64748b]">
-                  <span className="truncate max-w-[140px]">Nonce #{tx.payload.nonce} · {tx.payload.memo || '—'}</span>
-                  {tx.status === 'SYNCED_ONCHAIN' && tx.stellarTxHash && (
-                    <a
-                      href={`https://stellar.expert/explorer/testnet/tx/${tx.stellarTxHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#00f2fe] hover:underline flex items-center gap-0.5 shrink-0"
-                    >
-                      Ver <ArrowUpRight className="w-2.5 h-2.5" />
-                    </a>
-                  )}
-                </div>
+
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: '3px 8px',
+                  borderRadius: 12,
+                  background: tx.status === 'SYNCED_ONCHAIN' ? 'var(--color-emerald-bg)' : 'var(--color-amber-bg)',
+                  color: tx.status === 'SYNCED_ONCHAIN' ? 'var(--color-emerald)' : 'var(--color-amber)'
+                }}>
+                  {tx.status === 'SYNCED_ONCHAIN' ? 'On-Chain' : 'Offline'}
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
+
     </div>
   );
 }

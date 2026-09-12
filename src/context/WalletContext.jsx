@@ -15,6 +15,8 @@ const WalletContext = createContext();
 
 const STORAGE_KEY = 'pollar_offline_wallet_v2_real';
 
+const AUTH_STORAGE_KEY = 'pollar_auth_user';
+
 export function WalletProvider({ children }) {
   // Device Selection: 'device_a' (Payer) | 'device_b' (Payee/Merchant) | 'dual_sim' (Split View)
   const [activeDevice, setActiveDevice] = useState('device_a');
@@ -23,6 +25,17 @@ export function WalletProvider({ children }) {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isSimulatingOffline, setIsSimulatingOffline] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(false); // Purely local by default
+
+  // Authentication & User Session
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (savedUser) return JSON.parse(savedUser);
+    } catch (e) {
+      console.warn('Error reading auth state:', e);
+    }
+    return null;
+  });
 
   // Device A (Payer) Wallet State with genuine Stellar Ed25519 Keys
   const [deviceA, setDeviceA] = useState(() => {
@@ -170,8 +183,24 @@ export function WalletProvider({ children }) {
     const target = pubKey || deviceA.publicKey;
     const { fundWithFriendbot } = await import('../services/stellarCrypto');
     const res = await fundWithFriendbot(target);
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, 2000));
     await refreshOnlineBalance(target);
+
+    // Celebratory Confetti & Vibration feedback
+    try {
+      confetti({
+        particleCount: 100,
+        spread: 80,
+        origin: { y: 0.55 },
+        colors: ['#0062FF', '#10B981', '#F59E0B', '#60A5FA', '#34D399']
+      });
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([60, 40, 80]);
+      }
+    } catch (e) {
+      console.warn('Confetti trigger skipped:', e);
+    }
+
     return res;
   };
 
@@ -407,9 +436,100 @@ export function WalletProvider({ children }) {
     }
   };
 
+  // Authentication Handlers
+  const loginWithEmail = (email) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const user = {
+      id: 'usr_' + Math.random().toString(36).substring(2, 9),
+      email: cleanEmail,
+      name: cleanEmail.split('@')[0],
+      provider: 'email',
+      role: 'device_a',
+      connectedAt: Date.now()
+    };
+    setCurrentUser(user);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    return user;
+  };
+
+  const loginWithGoogle = (customEmail = null) => {
+    const email = customEmail || 'usuario.pollar@gmail.com';
+    const user = {
+      id: 'usr_g_' + Math.random().toString(36).substring(2, 9),
+      email,
+      name: customEmail ? customEmail.split('@')[0] : 'Demo Google User',
+      provider: 'google',
+      avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
+      role: 'device_a',
+      connectedAt: Date.now()
+    };
+    setCurrentUser(user);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    return user;
+  };
+
+  const loginWithWallet = async (inputKey = null) => {
+    let importedPub = deviceA.publicKey;
+    if (inputKey && inputKey.trim()) {
+      const res = await linkCustomAccount(inputKey.trim());
+      importedPub = res.publicKey;
+    }
+    const user = {
+      id: 'usr_w_' + importedPub.slice(0, 8),
+      email: null,
+      name: `Stellar (${importedPub.slice(0, 4)}...${importedPub.slice(-4)})`,
+      provider: 'wallet',
+      publicKey: importedPub,
+      role: 'device_a',
+      connectedAt: Date.now()
+    };
+    setCurrentUser(user);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    return user;
+  };
+
+  const loginAsPreset = (presetType) => {
+    if (presetType === 'pagador') {
+      setActiveDevice('device_a');
+      const user = {
+        id: 'usr_payer',
+        email: 'demo.pagador@pollar.io',
+        name: 'Pagador Demo',
+        provider: 'preset',
+        role: 'device_a',
+        publicKey: deviceA.publicKey,
+        connectedAt: Date.now()
+      };
+      setCurrentUser(user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      return user;
+    } else if (presetType === 'comercio') {
+      setActiveDevice('device_b');
+      const user = {
+        id: 'usr_merchant',
+        email: 'pos.tienda@pollar.io',
+        name: 'Comercio POS Demo',
+        provider: 'preset',
+        role: 'device_b',
+        publicKey: deviceB.publicKey,
+        connectedAt: Date.now()
+      };
+      setCurrentUser(user);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      return user;
+    }
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  };
+
   // Reset demo state
   const resetDemoData = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setCurrentUser(null);
     const keysA = generateRealStellarKeypair();
     const keysB = generateRealStellarKeypair();
 
@@ -437,6 +557,12 @@ export function WalletProvider({ children }) {
 
   return (
     <WalletContext.Provider value={{
+      currentUser,
+      loginWithEmail,
+      loginWithGoogle,
+      loginWithWallet,
+      loginAsPreset,
+      logout,
       activeDevice,
       setActiveDevice,
       isOnline: effectiveOnline,
