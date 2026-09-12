@@ -185,7 +185,7 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
                   onClick={() => handleConnectOption('preset_a')}
                   className="p-3 rounded-2xl bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200 text-left transition-all"
                 >
-                  <span className="text-xs font-bold text-[#0062FF] block">Pagador A (100 USDT)</span>
+                  <span className="text-xs font-bold text-[#0062FF] block">Pagador A ({deviceA.mainBalance.toFixed(2)} {deviceA.asset})</span>
                   <span className="text-[10px] font-mono text-slate-500 truncate block">{deviceA.publicKey.slice(0, 10)}...</span>
                 </button>
                 <button
@@ -205,14 +205,14 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
           <form onSubmit={handleManualSubmit} className="space-y-3.5">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Clave Secreta (S...) o Pública (G...)
+                Clave Privada (0x... / S...) o Dirección (0x... / G...)
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={manualKey}
                   onChange={(e) => setManualKey(e.target.value)}
-                  placeholder="Ej: SDM7... o GDM7..."
+                  placeholder="Ej: 0x... (EVM) o S... / G... (Stellar)"
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0062FF]"
                   required
                 />

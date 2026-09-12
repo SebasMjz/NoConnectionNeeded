@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { generateEvmQrDataUrl, EVM_NETWORKS } from '../services/evmCrypto';
 import {
   Lock,
   ArrowRightLeft,
@@ -18,7 +19,10 @@ import {
   Sparkles,
   ShieldCheck,
   Store,
-  Plus
+  Plus,
+  QrCode,
+  ExternalLink,
+  X
 } from 'lucide-react';
 
 export default function WalletVault({ onNavigate, onOpenLinkModal }) {
@@ -44,7 +48,10 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [showAllocation, setShowAllocation] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [copiedContract, setCopiedContract] = useState(false);
   const [isFunding, setIsFunding] = useState(false);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [receiveQrUrl, setReceiveQrUrl] = useState('');
 
   const availableInMain = Math.max(0, deviceA.mainBalance - deviceA.derivedOffline);
   const unspentOffline = Math.max(0, deviceA.derivedOffline - deviceA.spentOffline);
@@ -85,17 +92,30 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     }
   };
 
+  // Generate QR Code for receiving funds
+  useEffect(() => {
+    if (showReceiveModal && currentAccount.publicKey) {
+      generateEvmQrDataUrl(currentAccount.publicKey, '#0062FF').then(setReceiveQrUrl);
+    }
+  }, [showReceiveModal, currentAccount.publicKey]);
+
   const handleFundFriendbot = async () => {
     setIsFunding(true);
     setFeedback({ type: '', message: '' });
     try {
-      await requestFriendbotFunding(currentAccount.publicKey);
-      setFeedback({ 
-        type: 'success', 
-        message: isEvm 
-          ? '¡Recarga de Prueba Acreditada! +100.00 USDT para tu Bóveda Offline en Sepolia' 
-          : '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' 
-      });
+      if (isEvm) {
+        await refreshOnlineBalance(currentAccount.publicKey);
+        setFeedback({ 
+          type: 'success', 
+          message: 'Saldos actualizados on-chain desde Ethereum Sepolia.' 
+        });
+      } else {
+        await requestFriendbotFunding(currentAccount.publicKey);
+        setFeedback({ 
+          type: 'success', 
+          message: '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' 
+        });
+      }
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al solicitar fondos' });
     } finally {
@@ -107,6 +127,13 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     navigator.clipboard.writeText(currentAccount.publicKey);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
+  };
+
+  const copyUsdcContract = () => {
+    const usdcAddr = EVM_NETWORKS.sepolia.usdcAddress;
+    navigator.clipboard.writeText(usdcAddr);
+    setCopiedContract(true);
+    setTimeout(() => setCopiedContract(false), 2000);
   };
 
   return (
@@ -126,7 +153,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             onClick={() => refreshOnlineBalance(currentAccount.publicKey)}
             disabled={isRefreshingBalance}
             className="pollar-card-refresh"
-            title="Actualizar saldo"
+            title="Actualizar saldo on-chain"
           >
             <RefreshCw size={15} className={isRefreshingBalance ? 'animate-spin' : ''} />
           </button>
@@ -139,6 +166,27 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span>${currentAccount.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <span className="pollar-balance-asset">{currentAccount.asset}</span>
           </div>
+
+          {/* EVM Live Gas Badge */}
+          {isEvm && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span style={{ 
+                fontSize: 11, 
+                fontWeight: 700, 
+                padding: '2px 8px', 
+                borderRadius: 12, 
+                background: (currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                color: (currentAccount.nativeBalance > 0) ? '#6EE7B7' : '#FCD34D',
+                border: `1px solid ${(currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}>
+                <Zap size={11} />
+                Gas: {(currentAccount.nativeBalance || 0).toFixed(4)} ETH (Sepolia)
+              </span>
+            </div>
+          )}
 
           {!isMerchant ? (
             <div className="pollar-card-subline">
@@ -154,7 +202,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         </div>
 
         {/* Address Pill */}
-        <div className="pollar-card-address" onClick={copyAddress}>
+        <div className="pollar-card-address" onClick={copyAddress} title="Click para copiar dirección">
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
             {currentAccount.publicKey}
           </span>
@@ -170,7 +218,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span className="pollar-action-label">Pagar</span>
           </button>
 
-          <button onClick={() => onNavigate?.('send')} className="pollar-action-btn">
+          <button onClick={() => isEvm ? setShowReceiveModal(true) : onNavigate?.('send')} className="pollar-action-btn">
             <div className="pollar-action-icon-circle" style={{ color: 'var(--color-emerald)' }}>
               <ArrowDownLeft size={20} />
             </div>
@@ -184,12 +232,21 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span className="pollar-action-label">Bóveda</span>
           </button>
 
-          <button onClick={handleFundFriendbot} disabled={isFunding} className="pollar-action-btn">
-            <div className="pollar-action-icon-circle" style={{ color: 'var(--color-amber)' }}>
-              {isFunding ? <RefreshCw size={20} className="animate-spin" /> : <Sparkles size={20} />}
-            </div>
-            <span className="pollar-action-label">+10k XLM</span>
-          </button>
+          {isEvm ? (
+            <button onClick={() => setShowReceiveModal(true)} className="pollar-action-btn">
+              <div className="pollar-action-icon-circle" style={{ color: 'var(--color-amber)' }}>
+                <QrCode size={20} />
+              </div>
+              <span className="pollar-action-label">+USDC / Gas</span>
+            </button>
+          ) : (
+            <button onClick={handleFundFriendbot} disabled={isFunding} className="pollar-action-btn">
+              <div className="pollar-action-icon-circle" style={{ color: 'var(--color-amber)' }}>
+                {isFunding ? <RefreshCw size={20} className="animate-spin" /> : <Sparkles size={20} />}
+              </div>
+              <span className="pollar-action-label">+10k XLM</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -221,12 +278,12 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span className="pollar-transfer-name">Pagador A</span>
           </button>
 
-          {/* Friendbot */}
-          <button onClick={handleFundFriendbot} className="pollar-transfer-item">
+          {/* +Fondos / Faucet */}
+          <button onClick={() => isEvm ? setShowReceiveModal(true) : handleFundFriendbot()} className="pollar-transfer-item">
             <div className="pollar-transfer-circle" style={{ background: 'var(--color-amber-bg)', color: 'var(--color-amber)', border: '2px solid rgba(245, 158, 11, 0.3)' }}>
-              ⚡
+              {isEvm ? <QrCode size={18} /> : '⚡'}
             </div>
-            <span className="pollar-transfer-name">Friendbot</span>
+            <span className="pollar-transfer-name">{isEvm ? '+Fondos' : 'Friendbot'}</span>
           </button>
         </div>
       </div>
@@ -245,7 +302,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               </div>
             </div>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
-              {unspentOffline.toFixed(2)} USDT
+              {unspentOffline.toFixed(2)} {deviceA.asset}
             </span>
           </div>
 
@@ -274,7 +331,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 fontSize: 12,
                 fontWeight: 800,
                 background: activeAction === 'return' ? '#FFFFFF' : 'transparent',
-                color: activeAction === 'return' ? 'var(--color-emerald)' : 'var(--text-muted)',
+                color: activeAction === 'return' ? 'var(--pollar-blue)' : 'var(--text-muted)',
                 boxShadow: activeAction === 'return' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none'
               }}
             >
@@ -287,76 +344,53 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               <input
                 type="number"
                 step="0.01"
-                min="0.01"
                 placeholder="0.00"
                 value={transferAmount}
                 onChange={(e) => setTransferAmount(e.target.value)}
-                className="pollar-input"
-                style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', paddingRight: 60 }}
+                className="pollar-input-large"
               />
-              <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)' }}>
+              <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 14, fontWeight: 800, color: 'var(--text-muted)' }}>
                 {deviceA.asset}
               </span>
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              {[0.25, 0.50, 0.75, 1.0].map((pct) => (
+              {[0.25, 0.5, 0.75, 1.0].map((pct) => (
                 <button
                   key={pct}
                   type="button"
                   onClick={() => handleQuickPercent(pct)}
-                  style={{
-                    flex: 1,
-                    padding: '8px 4px',
-                    borderRadius: 12,
-                    background: '#F1F5F9',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--text-muted)'
-                  }}
+                  className="pollar-btn-quick"
                 >
-                  {pct * 100}%
+                  {pct === 1.0 ? 'MAX' : `${pct * 100}%`}
                 </button>
               ))}
             </div>
 
-            <button
-              type="submit"
-              disabled={!transferAmount || parseFloat(transferAmount) <= 0}
-              className={activeAction === 'allocate' ? 'pollar-btn-primary' : 'pollar-btn-emerald'}
-            >
-              {activeAction === 'allocate' ? 'Bloquear Fondos para Offline' : 'Devolver a Billetera Principal'}
+            <button type="submit" className="pollar-btn-primary">
+              {activeAction === 'allocate' ? 'Bloquear Fondos para Offline' : 'Liberar a Billetera'}
             </button>
-
-            {feedback.message && (
-              <div style={{
-                padding: 12,
-                borderRadius: 14,
-                fontSize: 12,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
-                color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)'
-              }}>
-                {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                <span>{feedback.message}</span>
-              </div>
-            )}
           </form>
         </div>
       )}
 
-      {/* Pending Sync Banner */}
+      {/* Feedback Banner */}
+      {feedback.message && (
+        <div className={`pollar-feedback ${feedback.type === 'error' ? 'error' : 'success'}`}>
+          {feedback.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+          <span style={{ fontSize: 13, fontWeight: 700 }}>{feedback.message}</span>
+        </div>
+      )}
+
+      {/* Offline Pending Transactions Notification Banner */}
       {pendingCount > 0 && (
         <div 
           onClick={() => onNavigate?.('sync')}
+          className="animate-in fade-in"
           style={{
-            padding: 16,
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05))',
             borderRadius: 20,
-            background: 'var(--color-amber-bg)',
+            padding: '14px 18px',
             border: '1px solid rgba(245, 158, 11, 0.3)',
             display: 'flex',
             alignItems: 'center',
@@ -374,7 +408,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
           </div>
           <span style={{ fontSize: 14, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#92400E' }}>
-            {totalPending.toFixed(2)} USDT
+            {totalPending.toFixed(2)} {currentAccount.asset}
           </span>
         </div>
       )}
@@ -429,6 +463,167 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
           </div>
         )}
       </div>
+
+      {/* Receive / Faucet Deposit Modal (EVM & Stellar) */}
+      {showReceiveModal && (
+        <div className="pollar-modal-overlay" onClick={() => setShowReceiveModal(false)} style={{ zIndex: 100 }}>
+          <div 
+            className="pollar-modal-sheet" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxHeight: '92vh', overflowY: 'auto' }}
+          >
+            {/* Header */}
+            <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <QrCode size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>
+                    {isEvm ? 'Fondeo de Billetera (Sepolia)' : 'Recibir Fondos'}
+                  </h3>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {isMerchant ? 'Cuenta Comercio B (Cobrador)' : 'Cuenta Principal A (Pagador)'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowReceiveModal(false)}
+                style={{ width: 32, height: 32, borderRadius: 10, background: '#F1F5F9', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <X size={18} color="var(--text-muted)" />
+              </button>
+            </div>
+
+            {/* Current Real On-Chain Balances */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+              <div style={{ background: 'rgba(0, 98, 255, 0.05)', border: '1px solid rgba(0, 98, 255, 0.2)', padding: 12, borderRadius: 16 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block' }}>Saldo USDC</span>
+                <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>
+                  ${currentAccount.mainBalance.toFixed(2)}
+                </span>
+              </div>
+              <div style={{ background: (currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.05)' : 'rgba(245, 158, 11, 0.05)', border: `1px solid ${(currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`, padding: 12, borderRadius: 16 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block' }}>Gas (Sepolia ETH)</span>
+                <span style={{ fontSize: 20, fontWeight: 900, color: (currentAccount.nativeBalance > 0) ? '#10B981' : '#D97706', fontFamily: 'var(--font-mono)' }}>
+                  {(currentAccount.nativeBalance || 0).toFixed(4)}
+                </span>
+              </div>
+            </div>
+
+            {/* QR Code Container */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 16 }}>
+              {receiveQrUrl ? (
+                <img 
+                  src={receiveQrUrl} 
+                  alt="QR Code" 
+                  style={{ width: 180, height: 180, borderRadius: 16, border: '3px solid #E2E8F0', padding: 6, background: '#FFFFFF' }}
+                />
+              ) : (
+                <div style={{ width: 180, height: 180, borderRadius: 16, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <QrCode size={48} opacity={0.3} />
+                </div>
+              )}
+              <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>
+                Escanea desde MetaMask o tu billetera EVM
+              </span>
+            </div>
+
+            {/* Address Box */}
+            <div style={{ marginTop: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                Dirección EVM de esta Billetera
+              </label>
+              <div 
+                onClick={copyAddress}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  background: '#F8FAFC', 
+                  border: '1px solid #CBD5E1', 
+                  padding: '10px 14px', 
+                  borderRadius: 14, 
+                  cursor: 'pointer' 
+                }}
+              >
+                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#0F172A', wordBreak: 'break-all' }}>
+                  {currentAccount.publicKey}
+                </span>
+                <button style={{ background: 'transparent', border: 'none', color: copiedAddress ? '#10B981' : 'var(--pollar-blue)', marginLeft: 8, cursor: 'pointer', shrink: 0 }}>
+                  {copiedAddress ? <Check size={18} /> : <Copy size={18} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Sepolia USDC Contract Information */}
+            {isEvm && (
+              <div style={{ marginTop: 14, background: '#F1F5F9', borderRadius: 16, padding: 14, border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>
+                    Contrato Oficial USDC (Sepolia)
+                  </span>
+                  <button 
+                    onClick={copyUsdcContract}
+                    style={{ background: 'transparent', border: 'none', color: copiedContract ? '#10B981' : 'var(--pollar-blue)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {copiedContract ? <Check size={12} /> : <Copy size={12} />} Copiar
+                  </button>
+                </div>
+                <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#64748B', wordBreak: 'break-all', background: '#FFFFFF', padding: '6px 10px', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                  {EVM_NETWORKS.sepolia.usdcAddress}
+                </p>
+                <p style={{ fontSize: 10, color: '#94A3B8', marginTop: 6 }}>
+                  Circle Official Testnet USDC · 6 Decimales · Símbolo: USDC
+                </p>
+              </div>
+            )}
+
+            {/* Testnet Faucet Links */}
+            {isEvm && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Enlaces a Faucets Gratuitos
+                </span>
+                <a 
+                  href={EVM_NETWORKS.sepolia.faucetUrl} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(0, 98, 255, 0.08)', color: 'var(--pollar-blue)', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
+                >
+                  <span>1. Faucet Oficial Circle (USDC Testnet)</span>
+                  <ExternalLink size={14} />
+                </a>
+                <a 
+                  href={EVM_NETWORKS.sepolia.ethFaucetUrl} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(245, 158, 11, 0.08)', color: '#D97706', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
+                >
+                  <span>2. Faucet Sepolia ETH (Gas para transacciones)</span>
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            )}
+
+            {/* Verification Button */}
+            <div style={{ marginTop: 20 }}>
+              <button
+                onClick={async () => {
+                  await refreshOnlineBalance(currentAccount.publicKey);
+                  setFeedback({ type: 'success', message: '¡Saldo verificado y actualizado con la red Sepolia!' });
+                }}
+                disabled={isRefreshingBalance}
+                className="pollar-btn-primary"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                <RefreshCw size={18} className={isRefreshingBalance ? 'animate-spin' : ''} />
+                <span>{isRefreshingBalance ? 'Consultando Sepolia...' : 'Comprobar Depósito On-Chain'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

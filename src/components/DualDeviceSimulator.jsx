@@ -49,10 +49,10 @@ export default function DualDeviceSimulator() {
 
   const handleSimulate = async () => {
     setIsProcessing(true);
-    addLog(`[A] Iniciando pago offline de $${simAmount} USDT → Comercio B`, 'info');
+    addLog(`[A] Iniciando pago offline de $${simAmount} ${deviceA.asset} → Comercio B`, 'info');
     try {
-      const tx = await createOfflinePayment(deviceB.stellarAddress || deviceB.publicKey, simAmount, simMemo);
-      addLog(`[A] Firma Ed25519 generada: ${tx.payerSignature.substring(0, 14)}...`, 'success');
+      const tx = await createOfflinePayment(deviceB.address || deviceB.publicKey, simAmount, simMemo);
+      addLog(`[A] Firma ${deviceA.network === 'evm' ? 'Secp256k1' : 'Ed25519'} generada: ${tx.payerSignature.substring(0, 14)}...`, 'success');
       addLog(`[P2P] Transmitiendo paquete de datos cifrado por canal offline...`, 'p2p');
       
       await new Promise(r => setTimeout(r, 450));
@@ -76,7 +76,7 @@ export default function DualDeviceSimulator() {
               <Zap size={18} color="var(--pollar-blue)" /> Simulador Bilateral P2P
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              Prueba la firma Ed25519 y contrafirma entre ambos roles en vivo
+              Prueba la firma bilateral ({deviceA.network === 'evm' ? 'Secp256k1' : 'Ed25519'}) y contrafirma entre ambos roles en vivo
             </p>
           </div>
           <button

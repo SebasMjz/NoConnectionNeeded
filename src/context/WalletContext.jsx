@@ -20,7 +20,9 @@ import {
   computeEvmMerkleLeafHash,
   submitRealEvmBatchTransaction,
   EVM_NETWORKS,
-  getEvmBalance
+  getEvmBalance,
+  fetchRealEvmAccountBalances,
+  importEvmAccount
 } from '../services/evmCrypto';
 import confetti from 'canvas-confetti';
 
@@ -71,10 +73,11 @@ export function WalletProvider({ children }) {
       secretKey: keys.privateKey,
       address: keys.address,
       privateKey: keys.privateKey,
-      asset: 'USDT (Sepolia)',
-      mainBalance: 250.0,
-      derivedOffline: 50.0,
+      asset: 'USDC',
+      mainBalance: 0.0,
+      derivedOffline: 0.0,
       spentOffline: 0.0,
+      nativeBalance: 0.0,
       currentNonce: 0,
       network: 'evm'
     };
@@ -88,9 +91,10 @@ export function WalletProvider({ children }) {
       secretKey: keys.privateKey,
       address: keys.address,
       privateKey: keys.privateKey,
-      asset: 'USDT (Sepolia)',
-      mainBalance: 40.0,
+      asset: 'USDC',
+      mainBalance: 0.0,
       receivedOffline: 0.0,
+      nativeBalance: 0.0,
       network: 'evm'
     };
   });
@@ -164,8 +168,28 @@ export function WalletProvider({ children }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.evmDeviceA) setEvmDeviceA(parsed.evmDeviceA);
-        if (parsed.evmDeviceB) setEvmDeviceB(parsed.evmDeviceB);
+        if (parsed.evmDeviceA) {
+          const devA = { ...parsed.evmDeviceA };
+          // If stored state has mocked values, reset to real zero
+          if (devA.asset?.includes('USDT') || devA.mainBalance === 250) {
+            devA.asset = 'USDC';
+            devA.mainBalance = 0.0;
+            devA.derivedOffline = 0.0;
+            devA.spentOffline = 0.0;
+            devA.nativeBalance = 0.0;
+          }
+          setEvmDeviceA(devA);
+        }
+        if (parsed.evmDeviceB) {
+          const devB = { ...parsed.evmDeviceB };
+          if (devB.asset?.includes('USDT') || devB.mainBalance === 40) {
+            devB.asset = 'USDC';
+            devB.mainBalance = 0.0;
+            devB.receivedOffline = 0.0;
+            devB.nativeBalance = 0.0;
+          }
+          setEvmDeviceB(devB);
+        }
         if (parsed.stellarDeviceA) setStellarDeviceA(parsed.stellarDeviceA);
         if (parsed.stellarDeviceB) setStellarDeviceB(parsed.stellarDeviceB);
         if (parsed.activeNetwork) setActiveNetwork(parsed.activeNetwork);
@@ -231,24 +255,45 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // Refresh balance (EVM or Stellar)
+  // Refresh balance (EVM real on-chain query or Stellar)
   const refreshOnlineBalance = async (targetPubKey = null) => {
-    const pubKey = targetPubKey || deviceA.publicKey;
-    if (!pubKey) return;
     setIsRefreshingBalance(true);
 
     try {
       if (isEvm) {
-        const network = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
-        const liveBal = await getEvmBalance(pubKey, network.rpcUrl);
-        if (liveBal !== null) {
-          setDeviceA(prev => ({
+        const addressA = (evmDeviceA.address || evmDeviceA.publicKey || '').trim();
+        const addressB = (evmDeviceB.address || evmDeviceB.publicKey || '').trim();
+
+        const [resA, resB] = await Promise.all([
+          addressA ? fetchRealEvmAccountBalances(addressA, activeEvmChain) : Promise.resolve(null),
+          addressB ? fetchRealEvmAccountBalances(addressB, activeEvmChain) : Promise.resolve(null)
+        ]);
+
+        if (resA && resA.success) {
+          setEvmDeviceA(prev => ({
             ...prev,
-            liveNativeBalance: liveBal,
-            symbol: network.symbol
+            mainBalance: resA.usdcBalance,
+            nativeBalance: resA.nativeBalance,
+            asset: 'USDC',
+            symbol: resA.nativeSymbol,
+            vaultState: resA.vaultState
           }));
         }
+
+        if (resB && resB.success) {
+          setEvmDeviceB(prev => ({
+            ...prev,
+            mainBalance: resB.usdcBalance,
+            nativeBalance: resB.nativeBalance,
+            asset: 'USDC',
+            symbol: resB.nativeSymbol
+          }));
+        }
+
+        setIsRefreshingBalance(false);
+        return resA;
       } else {
+        const pubKey = targetPubKey || deviceA.publicKey;
         const { fetchRealAccountBalances } = await import('../services/stellarCrypto');
         const horizonUrl = import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org';
         const res = await fetchRealAccountBalances(pubKey, horizonUrl);
@@ -260,11 +305,65 @@ export function WalletProvider({ children }) {
             allBalances: res.balances
           }));
         }
+        setIsRefreshingBalance(false);
+        return res;
       }
-      setIsRefreshingBalance(false);
     } catch (err) {
-      console.warn('Error fetching balance:', err);
+      console.warn('Error fetching real on-chain balance:', err);
       setIsRefreshingBalance(false);
+    }
+  };
+
+  // Automatically query real on-chain balances when online or changing network/chain
+  useEffect(() => {
+    if (effectiveOnline) {
+      refreshOnlineBalance();
+    }
+  }, [activeNetwork, activeEvmChain, effectiveOnline]);
+
+  // Link / Import custom account (EVM 0x... / Private Key or Stellar Secret/Public Key)
+  const linkCustomAccount = async (inputKey) => {
+    const clean = inputKey.trim();
+    if (clean.startsWith('0x') || clean.length === 64 || clean.length === 66) {
+      const imported = importEvmAccount(clean);
+      setEvmDeviceA(prev => ({
+        ...prev,
+        publicKey: imported.publicKey,
+        address: imported.address,
+        secretKey: imported.secretKey || prev.secretKey,
+        privateKey: imported.privateKey || prev.privateKey,
+        isReadOnly: imported.isReadOnly
+      }));
+      const balRes = await fetchRealEvmAccountBalances(imported.address, activeEvmChain);
+      if (balRes.success) {
+        setEvmDeviceA(prev => ({
+          ...prev,
+          mainBalance: balRes.usdcBalance,
+          nativeBalance: balRes.nativeBalance,
+          asset: 'USDC'
+        }));
+      }
+      return {
+        publicKey: imported.publicKey,
+        balance: balRes?.usdcBalance || 0,
+        nativeBalance: balRes?.nativeBalance || 0,
+        asset: 'USDC'
+      };
+    } else {
+      const { importStellarAccount } = await import('../services/stellarCrypto');
+      const imported = importStellarAccount(clean);
+      setStellarDeviceA(prev => ({
+        ...prev,
+        publicKey: imported.publicKey,
+        secretKey: imported.secretKey || prev.secretKey,
+        isReadOnly: imported.isReadOnly
+      }));
+      const balRes = await refreshOnlineBalance(imported.publicKey);
+      return {
+        publicKey: imported.publicKey,
+        balance: balRes?.primaryBalance || 0,
+        asset: balRes?.primaryAsset || 'XLM'
+      };
     }
   };
 
@@ -579,30 +678,34 @@ export function WalletProvider({ children }) {
 
   // Faucet funding (Sepolia / Stellar Friendbot)
   const requestFriendbotFunding = async (pubKey = null) => {
-    const target = pubKey || deviceA.publicKey;
     if (isEvm) {
-      // Add demo balance for EVM testing
-      setDeviceA(prev => ({
-        ...prev,
-        mainBalance: prev.mainBalance + 100.0
-      }));
+      // Query live on-chain balances for EVM
+      await refreshOnlineBalance();
+      return {
+        success: true,
+        isEvm: true,
+        network: EVM_NETWORKS[activeEvmChain]?.name || 'Ethereum Sepolia',
+        faucetUrl: EVM_NETWORKS[activeEvmChain]?.faucetUrl || 'https://faucet.circle.com/',
+        ethFaucetUrl: EVM_NETWORKS[activeEvmChain]?.ethFaucetUrl || 'https://sepoliafaucet.com/'
+      };
     } else {
+      const target = pubKey || deviceA.publicKey;
       const { fundWithFriendbot } = await import('../services/stellarCrypto');
       await fundWithFriendbot(target);
       await new Promise(r => setTimeout(r, 2000));
       await refreshOnlineBalance(target);
+
+      try {
+        confetti({
+          particleCount: 100,
+          spread: 80,
+          origin: { y: 0.55 },
+          colors: ['#0062FF', '#10B981', '#F59E0B', '#60A5FA', '#34D399']
+        });
+      } catch (e) {}
+
+      return { success: true };
     }
-
-    try {
-      confetti({
-        particleCount: 100,
-        spread: 80,
-        origin: { y: 0.55 },
-        colors: ['#0062FF', '#10B981', '#F59E0B', '#60A5FA', '#34D399']
-      });
-    } catch (e) {}
-
-    return { success: true };
   };
 
   // Authentication Handlers
@@ -639,6 +742,10 @@ export function WalletProvider({ children }) {
 
   const loginWithWallet = async (inputKey = null) => {
     let importedPub = deviceA.publicKey;
+    if (inputKey && inputKey.trim()) {
+      const res = await linkCustomAccount(inputKey.trim());
+      importedPub = res.publicKey;
+    }
     const user = {
       id: 'usr_w_' + importedPub.slice(0, 8),
       email: null,
@@ -707,10 +814,11 @@ export function WalletProvider({ children }) {
       secretKey: evmA.privateKey,
       address: evmA.address,
       privateKey: evmA.privateKey,
-      asset: 'USDT (Sepolia)',
-      mainBalance: 250.0,
-      derivedOffline: 50.0,
+      asset: 'USDC',
+      mainBalance: 0.0,
+      derivedOffline: 0.0,
       spentOffline: 0.0,
+      nativeBalance: 0.0,
       currentNonce: 0,
       network: 'evm'
     });
@@ -720,9 +828,10 @@ export function WalletProvider({ children }) {
       secretKey: evmB.privateKey,
       address: evmB.address,
       privateKey: evmB.privateKey,
-      asset: 'USDT (Sepolia)',
-      mainBalance: 40.0,
+      asset: 'USDC',
+      mainBalance: 0.0,
       receivedOffline: 0.0,
+      nativeBalance: 0.0,
       network: 'evm'
     });
 
@@ -784,6 +893,7 @@ export function WalletProvider({ children }) {
       syncToNetwork,
       syncToStellarNetwork,
       resetDemoData,
+      linkCustomAccount,
       refreshOnlineBalance,
       requestFriendbotFunding,
       isRefreshingBalance

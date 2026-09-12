@@ -80,7 +80,7 @@ export default function SyncManager() {
             {pendingTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-            ${totalPending.toFixed(2)} {isEvm ? 'USDT (EVM)' : 'USDT'} offline
+            ${totalPending.toFixed(2)} {isEvm ? 'USDC (Sepolia)' : 'USDT'} offline
           </span>
         </div>
 

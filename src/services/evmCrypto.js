@@ -13,11 +13,16 @@ export const EVM_NETWORKS = {
     id: 'sepolia',
     name: 'Ethereum Sepolia',
     chainId: 11155111,
-    rpcUrl: 'https://rpc.sepolia.org',
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    backupRpcUrl: 'https://rpc.sepolia.org',
     blockExplorer: 'https://sepolia.etherscan.io',
-    faucetUrl: 'https://sepoliafaucet.com',
-    symbol: 'SEP',
+    faucetUrl: 'https://faucet.circle.com/',
+    ethFaucetUrl: 'https://sepoliafaucet.com/',
+    symbol: 'ETH',
     nativeToken: 'ETH',
+    tokenSymbol: 'USDC',
+    usdcAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    usdcDecimals: 6,
     vaultAddress: '0x198079c389d2FCE83C7ea0d7795Df8b54a1Ebebe'
   },
   hskTestnet: {
@@ -29,6 +34,9 @@ export const EVM_NETWORKS = {
     faucetUrl: 'https://faucet.hashkey.com',
     symbol: 'HSK',
     nativeToken: 'HSK',
+    tokenSymbol: 'USDC',
+    usdcAddress: '',
+    usdcDecimals: 18,
     vaultAddress: '0x8901234567890123456789012345678901234567'
   },
   baseSepolia: {
@@ -37,9 +45,12 @@ export const EVM_NETWORKS = {
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
     blockExplorer: 'https://sepolia.basescan.org',
-    faucetUrl: 'https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet',
+    faucetUrl: 'https://faucet.circle.com/',
     symbol: 'ETH',
     nativeToken: 'ETH',
+    tokenSymbol: 'USDC',
+    usdcAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    usdcDecimals: 6,
     vaultAddress: '0x9012345678901234567890123456789012345678'
   }
 };
@@ -77,7 +88,7 @@ export function computeCanonicalEvmTxHash(payload) {
   // Sort keys deterministically for canonical serialization
   const canonical = JSON.stringify({
     amount: parseFloat(payload.amount),
-    asset: payload.asset || 'USDT',
+    asset: payload.asset || 'USDC',
     id: payload.id,
     memo: payload.memo || '',
     network: payload.network || 'EVM',
@@ -292,13 +303,158 @@ export async function generateEvmQrDataUrl(dataObject, colorDark = '#00f2fe') {
  */
 export async function getEvmBalance(address, rpcUrl = EVM_NETWORKS.sepolia.rpcUrl) {
   try {
+    const formattedAddress = ethers.getAddress(address.toLowerCase());
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const balanceWei = await provider.getBalance(address);
+    const balanceWei = await provider.getBalance(formattedAddress);
     return parseFloat(ethers.formatEther(balanceWei));
   } catch (err) {
     console.warn(`Could not fetch live EVM balance from ${rpcUrl}:`, err.message);
     return null;
   }
+}
+
+/**
+ * Fetches real on-chain balances for an EVM address:
+ * - Native gas currency (Sepolia ETH / HSK)
+ * - Real ERC-20 token balance (e.g. Circle Sepolia USDC)
+ * - PollarOfflineVault status (locked amount, settled amount)
+ */
+export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia') {
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  if (!address) {
+    return {
+      success: false,
+      error: 'Dirección no proporcionada',
+      usdcBalance: 0,
+      nativeBalance: 0,
+      asset: network.tokenSymbol || 'USDC',
+      nativeSymbol: network.nativeToken || 'ETH'
+    };
+  }
+
+  let formattedAddress;
+  try {
+    formattedAddress = ethers.getAddress(address.trim().toLowerCase());
+  } catch (e) {
+    return {
+      success: false,
+      error: `Dirección EVM inválida: ${address}`,
+      usdcBalance: 0,
+      nativeBalance: 0,
+      asset: network.tokenSymbol || 'USDC',
+      nativeSymbol: network.nativeToken || 'ETH'
+    };
+  }
+
+  let provider;
+  try {
+    provider = new ethers.JsonRpcProvider(network.rpcUrl);
+  } catch (err) {
+    if (network.backupRpcUrl) {
+      provider = new ethers.JsonRpcProvider(network.backupRpcUrl);
+    } else {
+      throw err;
+    }
+  }
+
+  let nativeBalance = 0;
+  let usdcBalance = 0;
+  let vaultState = null;
+
+  // 1. Fetch Real Native Balance (ETH)
+  try {
+    const rawNative = await provider.getBalance(formattedAddress);
+    nativeBalance = parseFloat(ethers.formatEther(rawNative));
+  } catch (err) {
+    console.warn(`[EVM] Error consultando saldo nativo en ${network.name}:`, err.message);
+  }
+
+  // 2. Fetch Real ERC-20 USDC Balance (Official Circle Sepolia Contract)
+  if (network.usdcAddress && network.usdcAddress !== ethers.ZeroAddress) {
+    try {
+      const usdcFormatted = ethers.getAddress(network.usdcAddress.toLowerCase());
+      const erc20Abi = [
+        'function balanceOf(address owner) view returns (uint256)',
+        'function decimals() view returns (uint8)',
+        'function symbol() view returns (string)'
+      ];
+      const tokenContract = new ethers.Contract(usdcFormatted, erc20Abi, provider);
+      const [rawTokenBal, decimals] = await Promise.all([
+        tokenContract.balanceOf(formattedAddress),
+        network.usdcDecimals ? Promise.resolve(network.usdcDecimals) : tokenContract.decimals().catch(() => 6)
+      ]);
+      usdcBalance = parseFloat(ethers.formatUnits(rawTokenBal, decimals));
+    } catch (err) {
+      console.warn(`[EVM] Error consultando saldo USDC en ${network.name}:`, err.message);
+    }
+  }
+
+  // 3. Fetch On-Chain Vault status if contract is deployed
+  if (network.vaultAddress && network.vaultAddress !== ethers.ZeroAddress) {
+    try {
+      const vaultFormatted = ethers.getAddress(network.vaultAddress.toLowerCase());
+      const vaultAbi = [
+        'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+      ];
+      const vaultContract = new ethers.Contract(vaultFormatted, vaultAbi, provider);
+      const res = await vaultContract.getVault(formattedAddress);
+      vaultState = {
+        payer: res[0],
+        lockedAmount: parseFloat(ethers.formatEther(res[1])),
+        totalSettled: parseFloat(ethers.formatEther(res[2])),
+        availableToSpend: parseFloat(ethers.formatEther(res[3])),
+        lastMerkleRoot: res[4],
+        nonce: Number(res[5])
+      };
+    } catch (err) {
+      // Expected if no deposits have been made yet
+    }
+  }
+
+  return {
+    success: true,
+    address: formattedAddress,
+    network: network.name,
+    chainId: network.chainId,
+    usdcBalance,
+    nativeBalance,
+    asset: network.tokenSymbol || 'USDC',
+    nativeSymbol: network.nativeToken || 'ETH',
+    vaultState,
+    faucetUrl: network.faucetUrl,
+    ethFaucetUrl: network.ethFaucetUrl,
+    usdcAddress: network.usdcAddress,
+    vaultAddress: network.vaultAddress
+  };
+}
+
+/**
+ * Imports an EVM Account from either a private key (full access) or a public address (read-only)
+ */
+export function importEvmAccount(keyOrAddress) {
+  const clean = keyOrAddress.trim();
+  if (clean.length === 64 || (clean.startsWith('0x') && clean.length === 66)) {
+    // Private Key
+    const wallet = getEvmWalletFromKey(clean);
+    return {
+      address: wallet.address,
+      publicKey: wallet.address,
+      privateKey: wallet.privateKey,
+      secretKey: wallet.privateKey,
+      isReadOnly: false
+    };
+  } else if (clean.startsWith('0x') && clean.length === 42) {
+    // Public Address only (Read Only)
+    const formatted = ethers.getAddress(clean.toLowerCase());
+    return {
+      address: formatted,
+      publicKey: formatted,
+      privateKey: null,
+      secretKey: null,
+      isReadOnly: true
+    };
+  }
+  throw new Error('Formato no válido. Ingresa una clave privada hex de 64 caracteres o una dirección 0x...');
 }
 
 /**
