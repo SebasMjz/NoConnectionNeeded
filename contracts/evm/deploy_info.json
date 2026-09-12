@@ -7,7 +7,7 @@
       "rpcUrl": "https://rpc.sepolia.org",
       "blockExplorer": "https://sepolia.etherscan.io",
       "faucetUrl": "https://sepoliafaucet.com",
-      "vaultAddress": "0x7890123456789012345678901234567890123456",
+      "vaultAddress": "0x198079c389d2FCE83C7ea0d7795Df8b54a1Ebebe",
       "currencySymbol": "SEP",
       "nativeToken": "ETH"
     },
