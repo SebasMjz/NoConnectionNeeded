@@ -807,6 +807,9 @@ button {
 
 #pollar-qr-reader {
   width: 100% !important;
+  max-width: 340px !important;
+  aspect-ratio: 1 / 1 !important;
+  margin: 0 auto !important;
   border: none !important;
   position: relative !important;
   background: #000000 !important;
@@ -817,7 +820,6 @@ button {
 #pollar-qr-reader video {
   width: 100% !important;
   height: 100% !important;
-  max-height: 380px !important;
   object-fit: cover !important;
   border-radius: 20px !important;
   image-rendering: -webkit-optimize-contrast !important;
@@ -825,10 +827,12 @@ button {
 }
 
 #pollar-qr-reader canvas {
-  image-rendering: pixelated !important;
+  display: none !important;
 }
 
 #pollar-qr-reader__scan_region {
+  width: 100% !important;
+  height: 100% !important;
   min-height: 280px !important;
   display: flex !important;
   align-items: center !important;

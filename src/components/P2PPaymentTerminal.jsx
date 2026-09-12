@@ -104,12 +104,11 @@ export default function P2PPaymentTerminal() {
     setIsScanning(true);
 
     try {
-      // Explicitly request user media to trigger Android OS permission dialog
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: cameraFacing }
         });
-        // CRITICAL FIX: Release hardware camera lock immediately so Html5Qrcode can access the camera
+        // Immediately release hardware lock so Html5Qrcode can bind to the device cleanly
         stream.getTracks().forEach(track => track.stop());
       }
     } catch (err) {
@@ -117,7 +116,7 @@ export default function P2PPaymentTerminal() {
     }
   };
 
-  // Flip Camera between rear (environment) and front (user), or cycling available devices
+  // Flip Camera between rear (environment) and front (user)
   const flipCamera = async () => {
     if (isSwitchingCamera) return;
     setIsSwitchingCamera(true);
@@ -127,26 +126,72 @@ export default function P2PPaymentTerminal() {
       if (scannerRef.current) {
         try {
           await scannerRef.current.stop();
+          scannerRef.current.clear();
         } catch (e) {}
       }
 
-      if (availableCameras.length > 1) {
-        const nextIdx = (currentCameraIndex + 1) % availableCameras.length;
-        setCurrentCameraIndex(nextIdx);
-        const nextCam = availableCameras[nextIdx];
-        const label = (nextCam.label || '').toLowerCase();
-        if (label.includes('front') || label.includes('user') || label.includes('selfie') || label.includes('delantera')) {
-          setCameraFacing('user');
-        } else {
-          setCameraFacing('environment');
-        }
-      } else {
-        setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
-      }
+      setCameraFacing(prev => (prev === 'environment' ? 'user' : 'environment'));
     } catch (e) {
       console.warn('Error flipping camera:', e);
     } finally {
       setTimeout(() => setIsSwitchingCamera(false), 350);
+    }
+  };
+
+  // Helper to reliably identify rear vs front camera device IDs
+  const getTargetCamera = (cameras, facing) => {
+    if (!cameras || cameras.length === 0) {
+      return { facingMode: facing };
+    }
+
+    const isBack = facing === 'environment';
+
+    if (isBack) {
+      // 1. Explicit rear camera labels
+      const backCam = cameras.find(c => {
+        const l = (c.label || '').toLowerCase();
+        return l.includes('back') || l.includes('rear') || l.includes('environment') || l.includes('trasera') || l.includes('posterior') || l.includes('0, facing back');
+      });
+      if (backCam) return backCam.id;
+
+      // 2. Camera without front/selfie in label
+      const notFrontCam = cameras.find(c => {
+        const l = (c.label || '').toLowerCase();
+        return l && !l.includes('front') && !l.includes('user') && !l.includes('delantera') && !l.includes('selfie') && !l.includes('facing front');
+      });
+      if (notFrontCam) return notFrontCam.id;
+
+      // 3. Fallback: on many Androids with multiple cameras, index 1 is rear or index 0 is rear
+      if (cameras.length > 1) {
+        return cameras[1].id;
+      }
+      return { facingMode: 'environment' };
+    } else {
+      // Front camera requested
+      const frontCam = cameras.find(c => {
+        const l = (c.label || '').toLowerCase();
+        return l.includes('front') || l.includes('user') || l.includes('delantera') || l.includes('selfie') || l.includes('facing front');
+      });
+      if (frontCam) return frontCam.id;
+
+      return { facingMode: 'user' };
+    }
+  };
+
+  // Trigger hardware autofocus on active camera track
+  const triggerAutoFocus = async () => {
+    try {
+      const videoEl = document.querySelector('#pollar-qr-reader video');
+      if (videoEl && videoEl.srcObject) {
+        const track = videoEl.srcObject.getVideoTracks()[0];
+        if (track && track.applyConstraints) {
+          await track.applyConstraints({
+            advanced: [{ focusMode: 'continuous' }]
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Tap to focus notice:', e);
     }
   };
 
@@ -178,12 +223,28 @@ export default function P2PPaymentTerminal() {
           html5QrCode = new Html5Qrcode(qrRegionId);
           scannerRef.current = html5QrCode;
 
+          const cameraTarget = getTargetCamera(cameras, cameraFacing);
+
           // HD configuration with continuous autofocus to prevent blurriness
+          const videoConstraints = typeof cameraTarget === 'string'
+            ? {
+                deviceId: { exact: cameraTarget },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                advanced: [{ focusMode: 'continuous' }]
+              }
+            : {
+                facingMode: cameraFacing,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                advanced: [{ focusMode: 'continuous' }]
+              };
+
           const config = {
-            fps: 20,
+            fps: 24,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
               const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const qrboxSize = Math.floor(minEdge * 0.72);
+              const qrboxSize = Math.floor(minEdge * 0.78);
               return {
                 width: Math.max(220, qrboxSize),
                 height: Math.max(220, qrboxSize)
@@ -191,50 +252,69 @@ export default function P2PPaymentTerminal() {
             },
             aspectRatio: 1.0,
             disableFlip: false,
-            videoConstraints: {
-              facingMode: cameraFacing,
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 },
-              focusMode: 'continuous',
-              advanced: [{ focusMode: 'continuous' }]
-            }
+            videoConstraints: videoConstraints
           };
 
-          // Prioritize selected camera ID if present, otherwise target facingMode
-          let cameraTarget = { facingMode: cameraFacing };
-          if (cameras.length > 0 && cameras[currentCameraIndex]) {
-            cameraTarget = cameras[currentCameraIndex].id;
-          }
+          const onScanSuccess = (decodedText) => {
+            handleScannedData(decodedText);
+            stopCamera();
+          };
 
-          await html5QrCode.start(
-            cameraTarget,
-            config,
-            (decodedText) => {
-              handleScannedData(decodedText);
-              stopCamera();
-            },
-            () => {}
-          );
-        } catch (err) {
-          console.warn(`Initial camera start attempt notice:`, err);
-          if (!isMounted) return;
-
-          // Fallback to simple facingMode if advanced constraints were not supported
           try {
             await html5QrCode.start(
-              { facingMode: cameraFacing },
-              { fps: 15, qrbox: { width: 240, height: 240 } },
-              (decodedText) => {
-                handleScannedData(decodedText);
-                stopCamera();
-              },
+              cameraTarget,
+              config,
+              onScanSuccess,
               () => {}
             );
-          } catch (err2) {
-            console.error('All camera start attempts failed:', err2);
-            if (isMounted) {
-              setCameraError('No se pudo acceder a la cámara. Revisa los permisos de la aplicación.');
+          } catch (firstErr) {
+            console.warn('Initial camera start attempt with HD constraints failed, trying direct mode:', firstErr);
+            if (!isMounted) return;
+
+            // Fallback to simple camera target without complex constraints
+            await html5QrCode.start(
+              typeof cameraTarget === 'string' ? cameraTarget : { facingMode: cameraFacing },
+              {
+                fps: 20,
+                aspectRatio: 1.0,
+                qrbox: { width: 250, height: 250 }
+              },
+              onScanSuccess,
+              () => {}
+            );
+          }
+
+          // Directly enable continuous autofocus and autoexposure on the active MediaStreamTrack
+          setTimeout(() => {
+            if (!isMounted) return;
+            try {
+              const videoEl = document.querySelector('#pollar-qr-reader video');
+              if (videoEl && videoEl.srcObject) {
+                const stream = videoEl.srcObject;
+                const track = stream.getVideoTracks()[0];
+                if (track && track.getCapabilities) {
+                  const caps = track.getCapabilities();
+                  const advanced = [];
+                  if (caps.focusMode && caps.focusMode.includes('continuous')) {
+                    advanced.push({ focusMode: 'continuous' });
+                  }
+                  if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+                    advanced.push({ exposureMode: 'continuous' });
+                  }
+                  if (advanced.length > 0) {
+                    track.applyConstraints({ advanced }).catch(() => {});
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Post-start autofocus notice:', e);
             }
+          }, 300);
+
+        } catch (err) {
+          console.error('All camera start attempts failed:', err);
+          if (isMounted) {
+            setCameraError('No se pudo acceder a la cámara. Revisa los permisos de la aplicación.');
           }
         }
       }, 250);
@@ -249,7 +329,7 @@ export default function P2PPaymentTerminal() {
         }
       };
     }
-  }, [isScanning, cameraFacing, currentCameraIndex]);
+  }, [isScanning, cameraFacing]);
 
   const stopCamera = () => {
     if (scannerRef.current) {
@@ -507,15 +587,20 @@ export default function P2PPaymentTerminal() {
 
           {/* Camera Viewport */}
           <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-            <div style={{
-              width: '100%',
-              borderRadius: 24,
-              overflow: 'hidden',
-              background: '#1E293B',
-              border: '2px solid rgba(0, 98, 255, 0.5)',
-              position: 'relative',
-              boxShadow: '0 0 30px rgba(0, 98, 255, 0.3)'
-            }}>
+            <div
+              onClick={triggerAutoFocus}
+              title="Toca para re-enfocar"
+              style={{
+                width: '100%',
+                borderRadius: 24,
+                overflow: 'hidden',
+                background: '#1E293B',
+                border: '2px solid rgba(0, 98, 255, 0.5)',
+                position: 'relative',
+                boxShadow: '0 0 30px rgba(0, 98, 255, 0.3)',
+                cursor: 'pointer'
+              }}
+            >
               <div id="pollar-qr-reader" style={{ width: '100%', minHeight: 280 }} />
               {/* Scanning Target Guide & Laser Sweep */}
               <div className="pollar-scanner-target">
@@ -533,7 +618,7 @@ export default function P2PPaymentTerminal() {
                   {cameraFacing === 'environment' ? '📷 Cámara Trasera (Autofocus HD)' : '🤳 Cámara Frontal'}
                 </p>
                 <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
-                  Apunta al código QR. Toca "Girar" para alternar entre cámaras.
+                  Apunta al código QR. Toca la pantalla para re-enfocar o "Girar" para alternar.
                 </p>
               </div>
             )}
