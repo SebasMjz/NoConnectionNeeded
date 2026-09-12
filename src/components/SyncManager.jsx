@@ -11,25 +11,29 @@ import {
   ChevronDown,
   GitBranch,
   Layers,
-  ShieldCheck,
-  Zap,
   Copy,
   Check
 } from 'lucide-react';
+import { EVM_NETWORKS } from '../services/evmCrypto';
 
 export default function SyncManager() {
   const { 
     transactions, 
     merkleTree, 
     isOnline, 
-    syncToStellarNetwork, 
+    syncToNetwork, 
     isSyncing, 
-    lastSyncResult 
+    lastSyncResult,
+    isEvm,
+    activeEvmChain
   } = useWallet();
 
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [showMerkleDetails, setShowMerkleDetails] = useState(false);
   const [copiedRoot, setCopiedRoot] = useState(false);
+
+  const currentEvmNetwork = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
+  const targetNetworkName = isEvm ? currentEvmNetwork.name : 'Stellar Testnet';
 
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
   const syncedTxs = transactions.filter(t => t.status === 'SYNCED_ONCHAIN');
@@ -38,10 +42,13 @@ export default function SyncManager() {
   const handleSync = async () => {
     setFeedback({ type: '', message: '' });
     try {
-      const res = await syncToStellarNetwork('USER_MANUAL_CLICK');
-      setFeedback({ type: 'success', message: `Lote sincronizado con éxito en Stellar Ledger #${res.stellarLedger || 'Testnet'}` });
+      const res = await syncToNetwork('USER_MANUAL_CLICK');
+      setFeedback({ 
+        type: 'success', 
+        message: `Lote sincronizado con éxito en ${targetNetworkName} (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})` 
+      });
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || 'Error al sincronizar lote en Stellar' });
+      setFeedback({ type: 'error', message: err.message || `Error al sincronizar lote en ${targetNetworkName}` });
     }
   };
 
@@ -73,7 +80,7 @@ export default function SyncManager() {
             {pendingTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-            ${totalPending.toFixed(2)} USDT offline
+            ${totalPending.toFixed(2)} {isEvm ? 'USDT (EVM)' : 'USDT'} offline
           </span>
         </div>
 
@@ -91,7 +98,7 @@ export default function SyncManager() {
             {syncedTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-emerald)' }}>
-            En Stellar Testnet
+            En {targetNetworkName}
           </span>
         </div>
 
@@ -102,10 +109,10 @@ export default function SyncManager() {
         <div className="pollar-panel-header">
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CloudUpload size={18} color="var(--pollar-blue)" /> Sincronizador de Lote (Horizon)
+              <CloudUpload size={18} color="var(--pollar-blue)" /> Sincronizador de Lote ({targetNetworkName})
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              Comprime firmas Ed25519 bilaterales en una transacción on-chain
+              Comprime firmas criptográficas bilaterales ({isEvm ? 'Secp256k1' : 'Ed25519'}) en un hash raíz Merkle on-chain
             </p>
           </div>
           <span style={{
@@ -132,7 +139,7 @@ export default function SyncManager() {
           {isSyncing ? (
             <>
               <RefreshCw size={18} className="animate-spin" />
-              Transmitiendo a Stellar Horizon...
+              Transmitiendo a {targetNetworkName}...
             </>
           ) : (
             <>
@@ -193,20 +200,22 @@ export default function SyncManager() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)' }}>
                 <CheckCircle2 size={16} />
-                <span>Lote Confirmado en Stellar</span>
+                <span>Lote Confirmado en {lastSyncResult.network || targetNetworkName}</span>
               </div>
-              <a
-                href={lastSyncResult.stellarExpertUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                StellarExpert <ArrowUpRight size={14} />
-              </a>
+              {lastSyncResult.explorerUrl && (
+                <a
+                  href={lastSyncResult.explorerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  {isEvm ? 'Etherscan Sepolia' : 'StellarExpert'} <ArrowUpRight size={14} />
+                </a>
+              )}
             </div>
             <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <strong>Tx Hash:</strong> {lastSyncResult.stellarTxHash}
+                <strong>Tx Hash:</strong> {lastSyncResult.txHash || lastSyncResult.stellarTxHash}
               </div>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <strong>Merkle Root:</strong> {lastSyncResult.batchMerkleRoot}
@@ -235,7 +244,9 @@ export default function SyncManager() {
             </div>
             <div>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Árbol Criptográfico de Merkle</span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{merkleTree?.leaves?.length || 0} hojas criptográficas generadas</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {merkleTree?.leaves?.length || 0} hojas criptográficas ({isEvm ? 'Keccak-256' : 'SHA-256'})
+              </span>
             </div>
           </div>
           <ChevronDown size={18} color="var(--text-light)" style={{ transform: showMerkleDetails ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
@@ -255,16 +266,18 @@ export default function SyncManager() {
               position: 'relative'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <strong style={{ color: 'var(--pollar-blue)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Merkle Root (SHA-256)</strong>
+                <strong style={{ color: 'var(--pollar-blue)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Merkle Root ({isEvm ? 'Keccak-256 EVM' : 'SHA-256'})
+                </strong>
                 <button onClick={copyMerkleRoot} style={{ background: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700 }}>
                   {copiedRoot ? <Check size={12} color="var(--color-emerald)" /> : <Copy size={12} />}
                   {copiedRoot ? 'Copiado' : 'Copiar'}
                 </button>
               </div>
-              {merkleTree.rootHash || '0000000000000000000000000000000000000000000000000000000000000000'}
+              {merkleTree.rootHash || '0x0000000000000000000000000000000000000000000000000000000000000000'}
             </div>
             <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-              El hash raíz comprime criptográficamente todo el lote offline en una única operación inmutable sobre el ledger de Stellar Horizon.
+              El hash raíz comprime criptográficamente todo el lote offline en una única operación inmutable sobre la blockchain de {targetNetworkName}.
             </p>
           </div>
         )}
@@ -312,7 +325,7 @@ export default function SyncManager() {
                       {tx.payload.amount.toFixed(2)} {tx.payload.asset}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      Nonce #{tx.payload.nonce} · {tx.payload.memo || 'Pago Offline'}
+                      Nonce #{tx.payload.nonce} · {tx.payload.memo || 'Pago Offline'} {tx.network ? `(${tx.network})` : ''}
                     </span>
                   </div>
                 </div>

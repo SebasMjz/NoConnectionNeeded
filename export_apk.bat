@@ -30,10 +30,10 @@ if %ERRORLEVEL% EQU 0 (
     echo =========================================================
 ) else (
     echo =========================================================
-    echo [AVISO] Gradle requiere Java 17 o 21 (No Java 25).
-    echo Para compilar sin configurar variables de entorno:
+    echo [AVISO] Fallo la compilacion con Gradle.
+    echo Para compilar desde Android Studio:
     echo 1. Abre Android Studio con: npx cap open android
-    echo 2. Ve a Build ^> Build Bundle(s) / APK(s) ^> Build APK(s)
+    echo 2. Ve al menu: Build - Build Bundle or APK - Build APK
     echo =========================================================
 )
 

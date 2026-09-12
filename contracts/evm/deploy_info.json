@@ -1,0 +1,44 @@
+{
+  "contractName": "PollarOfflineVault",
+  "networks": {
+    "sepolia": {
+      "name": "Ethereum Sepolia Testnet",
+      "chainId": 11155111,
+      "rpcUrl": "https://rpc.sepolia.org",
+      "blockExplorer": "https://sepolia.etherscan.io",
+      "faucetUrl": "https://sepoliafaucet.com",
+      "vaultAddress": "0x7890123456789012345678901234567890123456",
+      "currencySymbol": "SEP",
+      "nativeToken": "ETH"
+    },
+    "hskTestnet": {
+      "name": "HashKey Chain Testnet",
+      "chainId": 133,
+      "rpcUrl": "https://hashkeychain-testnet.alt.technology",
+      "blockExplorer": "https://hashkeychain-testnet-explorer.alt.technology",
+      "faucetUrl": "https://faucet.hashkey.com",
+      "vaultAddress": "0x8901234567890123456789012345678901234567",
+      "currencySymbol": "HSK",
+      "nativeToken": "HSK"
+    },
+    "baseSepolia": {
+      "name": "Base Sepolia Testnet",
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "blockExplorer": "https://sepolia.basescan.org",
+      "faucetUrl": "https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet",
+      "vaultAddress": "0x9012345678901234567890123456789012345678",
+      "currencySymbol": "ETH",
+      "nativeToken": "ETH"
+    },
+    "localhost": {
+      "name": "Local Hardhat / Anvil",
+      "chainId": 1337,
+      "rpcUrl": "http://127.0.0.1:8545",
+      "blockExplorer": "http://localhost:8545",
+      "vaultAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "currencySymbol": "ETH",
+      "nativeToken": "ETH"
+    }
+  }
+}

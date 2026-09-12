@@ -31,7 +31,9 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     refreshOnlineBalance,
     requestFriendbotFunding,
     isRefreshingBalance,
-    transactions
+    transactions,
+    isEvm,
+    activeEvmChain
   } = useWallet();
 
   const isMerchant = activeDevice === 'device_b';
@@ -88,9 +90,14 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     setFeedback({ type: '', message: '' });
     try {
       await requestFriendbotFunding(currentAccount.publicKey);
-      setFeedback({ type: 'success', message: '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' });
+      setFeedback({ 
+        type: 'success', 
+        message: isEvm 
+          ? '¡Recarga de Prueba Acreditada! +100.00 USDT para tu Bóveda Offline en Sepolia' 
+          : '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' 
+      });
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || 'Error al conectar con Friendbot' });
+      setFeedback({ type: 'error', message: err.message || 'Error al solicitar fondos' });
     } finally {
       setIsFunding(false);
     }
@@ -363,7 +370,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
             <div>
               <span style={{ fontSize: 13, fontWeight: 800, color: '#92400E', display: 'block' }}>{pendingCount} pagos offline pendientes</span>
-              <span style={{ fontSize: 11, color: '#B45309' }}>Toca para sincronizar en Stellar</span>
+              <span style={{ fontSize: 11, color: '#B45309' }}>{isEvm ? 'Toca para sincronizar en Sepolia' : 'Toca para sincronizar en Stellar'}</span>
             </div>
           </div>
           <span style={{ fontSize: 14, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#92400E' }}>
