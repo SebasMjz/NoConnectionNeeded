@@ -47,7 +47,7 @@ contract PollarOfflineVault {
     /**
      * @notice Deposit native currency (e.g. Sepolia ETH, HSK, MATIC) to fund the offline vault
      */
-    function depositVault() external payable {
+    function depositVault() public payable {
         require(msg.value > 0, "PollarVault: amount must be > 0");
         VaultState storage v = vaults[msg.sender];
         v.payer = msg.sender;
