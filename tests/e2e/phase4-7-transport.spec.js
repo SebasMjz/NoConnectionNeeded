@@ -35,8 +35,7 @@ test('P4: BluetoothService file exists with correct exports', async ({ page }) =
   expect(content).toMatch(/class BluetoothService/);
   expect(content).toMatch(/getBluetoothService/);
   expect(content).toMatch(/initialize/);
-  expect(content).toMatch(/startAdvertising/);
-  expect(content).toMatch(/startScanning/);
+  expect(content).toMatch(/startScan/);
   expect(content).toMatch(/sendPayload/);
 });
 

@@ -31,6 +31,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWalletRegistryOpen, setIsWalletRegistryOpen] = useState(false);
   const [isTransportOpen, setIsTransportOpen] = useState(false);
 
 
@@ -209,6 +210,15 @@ function AppContent() {
         <div className="pollar-modal-overlay" onClick={() => setIsWalletRegistryOpen(false)}>
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
             <WalletRegistry onClose={() => setIsWalletRegistryOpen(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Transport Selector Modal */}
+      {isTransportOpen && (
+        <div className="pollar-modal-overlay" onClick={() => setIsTransportOpen(false)}>
+          <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
+            <P2PTransportSelector onClose={() => setIsTransportOpen(false)} />
           </div>
         </div>
       )}

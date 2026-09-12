@@ -149,12 +149,23 @@ export function WalletProvider({ children }) {
       const res = await fetchRealAccountBalances(pubKey, horizonUrl);
 
       if (res.success) {
-        setDeviceA(prev => ({
-          ...prev,
-          mainBalance: res.primaryBalance,
-          asset: res.primaryAsset,
-          allBalances: res.balances
-        }));
+        // Update whichever device matches this pubkey
+        if (pubKey === deviceA.publicKey) {
+          setDeviceA(prev => ({
+            ...prev,
+            mainBalance: res.primaryBalance,
+            asset: res.primaryAsset,
+            allBalances: res.balances
+          }));
+        }
+        if (pubKey === deviceB.publicKey) {
+          setDeviceB(prev => ({
+            ...prev,
+            mainBalance: res.primaryBalance,
+            asset: res.primaryAsset,
+            allBalances: res.balances
+          }));
+        }
       }
       setIsRefreshingBalance(false);
       return res;
@@ -442,6 +453,13 @@ export function WalletProvider({ children }) {
 
       setLastSyncResult(result);
       setIsSyncing(false);
+
+      // Refresh on-chain balances for both devices after sync
+      if (effectiveOnline) {
+        await refreshOnlineBalance(deviceA.publicKey);
+        await refreshOnlineBalance(deviceB.publicKey);
+      }
+
       return result;
     } catch (err) {
       setIsSyncing(false);

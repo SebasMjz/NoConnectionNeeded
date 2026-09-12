@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pollar-offline-v1';
+const CACHE_NAME = 'pollar-offline-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -30,14 +30,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Offline-first strategy
+  // Only cache GET requests
+  if (event.request.method !== 'GET') return;
+  
+  // Skip non-http requests (capacitor://, file://, etc)
+  if (!event.request.url.startsWith('http')) return;
+  
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchRes) => {
-        return fetchRes;
+    caches.match(event.request).then((cached) => {
+      // Return cached or fetch from network
+      return cached || fetch(event.request).then((response) => {
+        // Cache successful responses
+        if (response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
       }).catch(() => {
-        // Fallback to cache if offline
-        return caches.match('/index.html');
+        // Fallback to cached version if offline
+        return cached;
       });
     })
   );
