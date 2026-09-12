@@ -18,7 +18,8 @@ import {
   RefreshCw,
   X,
   Sparkles,
-  Smartphone
+  Smartphone,
+  SwitchCamera
 } from 'lucide-react';
 
 export default function P2PPaymentTerminal() {
@@ -48,6 +49,10 @@ export default function P2PPaymentTerminal() {
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [handshakeStep, setHandshakeStep] = useState(0);
   const [cameraError, setCameraError] = useState('');
+  const [cameraFacing, setCameraFacing] = useState('environment'); // 'environment' (back) | 'user' (front)
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
 
   // Manual counter-sign modal state
   const [showManualCounterSign, setShowManualCounterSign] = useState(false);
@@ -92,7 +97,7 @@ export default function P2PPaymentTerminal() {
     }
   }, [pendingTx]);
 
-  // Start Camera with permissions
+  // Start Camera with permissions and clean stream release
   const startCamera = async (targetContext = 'any') => {
     setScanContext(targetContext);
     setCameraError('');
@@ -101,60 +106,141 @@ export default function P2PPaymentTerminal() {
     try {
       // Explicitly request user media to trigger Android OS permission dialog
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacing }
         });
+        // CRITICAL FIX: Release hardware camera lock immediately so Html5Qrcode can access the camera
+        stream.getTracks().forEach(track => track.stop());
       }
     } catch (err) {
       console.warn('Camera permission check notice:', err);
     }
   };
 
+  // Flip Camera between rear (environment) and front (user), or cycling available devices
+  const flipCamera = async () => {
+    if (isSwitchingCamera) return;
+    setIsSwitchingCamera(true);
+    setCameraError('');
+
+    try {
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+        } catch (e) {}
+      }
+
+      if (availableCameras.length > 1) {
+        const nextIdx = (currentCameraIndex + 1) % availableCameras.length;
+        setCurrentCameraIndex(nextIdx);
+        const nextCam = availableCameras[nextIdx];
+        const label = (nextCam.label || '').toLowerCase();
+        if (label.includes('front') || label.includes('user') || label.includes('selfie') || label.includes('delantera')) {
+          setCameraFacing('user');
+        } else {
+          setCameraFacing('environment');
+        }
+      } else {
+        setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
+      }
+    } catch (e) {
+      console.warn('Error flipping camera:', e);
+    } finally {
+      setTimeout(() => setIsSwitchingCamera(false), 350);
+    }
+  };
+
   // Camera QR Scanner instance lifecycle
   useEffect(() => {
     let html5QrCode = null;
+    let isMounted = true;
 
     if (isScanning) {
       const qrRegionId = 'pollar-qr-reader';
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
+        if (!isMounted) return;
+
         try {
+          // Enumerate all available cameras on device
+          let cameras = [];
+          try {
+            cameras = await Html5Qrcode.getCameras();
+            if (cameras && cameras.length > 0 && isMounted) {
+              setAvailableCameras(cameras);
+            }
+          } catch (e) {
+            console.warn('Could not enumerate cameras:', e);
+          }
+
+          const readerElem = document.getElementById(qrRegionId);
+          if (!readerElem || !isMounted) return;
+
           html5QrCode = new Html5Qrcode(qrRegionId);
           scannerRef.current = html5QrCode;
 
+          // HD configuration with continuous autofocus to prevent blurriness
           const config = {
-            fps: 15,
-            qrbox: { width: 240, height: 240 },
-            aspectRatio: 1.0
+            fps: 20,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              const qrboxSize = Math.floor(minEdge * 0.72);
+              return {
+                width: Math.max(220, qrboxSize),
+                height: Math.max(220, qrboxSize)
+              };
+            },
+            aspectRatio: 1.0,
+            disableFlip: false,
+            videoConstraints: {
+              facingMode: cameraFacing,
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 },
+              focusMode: 'continuous',
+              advanced: [{ focusMode: 'continuous' }]
+            }
           };
 
-          html5QrCode.start(
-            { facingMode: 'environment' },
+          // Prioritize selected camera ID if present, otherwise target facingMode
+          let cameraTarget = { facingMode: cameraFacing };
+          if (cameras.length > 0 && cameras[currentCameraIndex]) {
+            cameraTarget = cameras[currentCameraIndex].id;
+          }
+
+          await html5QrCode.start(
+            cameraTarget,
             config,
             (decodedText) => {
               handleScannedData(decodedText);
               stopCamera();
             },
             () => {}
-          ).catch((err) => {
-            console.warn('Failed to start rear camera, trying default camera:', err);
-            html5QrCode.start(
-              { facingMode: 'user' },
-              config,
+          );
+        } catch (err) {
+          console.warn(`Initial camera start attempt notice:`, err);
+          if (!isMounted) return;
+
+          // Fallback to simple facingMode if advanced constraints were not supported
+          try {
+            await html5QrCode.start(
+              { facingMode: cameraFacing },
+              { fps: 15, qrbox: { width: 240, height: 240 } },
               (decodedText) => {
                 handleScannedData(decodedText);
                 stopCamera();
               },
               () => {}
-            ).catch((err2) => {
-              setCameraError('Permiso de cámara denegado o no disponible en este dispositivo.');
-            });
-          });
-        } catch (e) {
-          setCameraError('Error al inicializar la cámara: ' + e.message);
+            );
+          } catch (err2) {
+            console.error('All camera start attempts failed:', err2);
+            if (isMounted) {
+              setCameraError('No se pudo acceder a la cámara. Revisa los permisos de la aplicación.');
+            }
+          }
         }
-      }, 300);
+      }, 250);
 
       return () => {
+        isMounted = false;
         clearTimeout(timer);
         if (scannerRef.current) {
           try {
@@ -163,7 +249,7 @@ export default function P2PPaymentTerminal() {
         }
       };
     }
-  }, [isScanning]);
+  }, [isScanning, cameraFacing, currentCameraIndex]);
 
   const stopCamera = () => {
     if (scannerRef.current) {
@@ -172,6 +258,7 @@ export default function P2PPaymentTerminal() {
       } catch (e) {}
     }
     setIsScanning(false);
+    setIsSwitchingCamera(false);
   };
 
   const handlePay = async (e) => {
@@ -364,28 +451,58 @@ export default function P2PPaymentTerminal() {
           padding: '24px 20px 40px 20px'
         }}>
           {/* Top Bar */}
-          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#FFFFFF' }}>
+          <div style={{ width: '100%', maxWidth: 420, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#FFFFFF' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Camera size={20} color="var(--pollar-blue)" />
               <span style={{ fontSize: 15, fontWeight: 800 }}>
                 {scanContext === 'invoice' ? 'Escanear Factura QR' : 'Escanear QR de Pago'}
               </span>
             </div>
-            <button
-              onClick={stopCamera}
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.2)',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <X size={20} />
-            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Flip Camera Button */}
+              <button
+                onClick={flipCamera}
+                disabled={isSwitchingCamera}
+                title="Girar Cámara (Trasera / Frontal)"
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 20,
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                }}
+              >
+                <SwitchCamera size={16} className={isSwitchingCamera ? 'animate-spin' : ''} />
+                <span>{isSwitchingCamera ? 'Girando...' : (cameraFacing === 'environment' ? 'Trasera' : 'Frontal')}</span>
+              </button>
+
+              {/* Close Button */}
+              <button
+                onClick={stopCamera}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
           {/* Camera Viewport */}
@@ -400,6 +517,10 @@ export default function P2PPaymentTerminal() {
               boxShadow: '0 0 30px rgba(0, 98, 255, 0.3)'
             }}>
               <div id="pollar-qr-reader" style={{ width: '100%', minHeight: 280 }} />
+              {/* Scanning Target Guide & Laser Sweep */}
+              <div className="pollar-scanner-target">
+                <div className="pollar-scanner-laser" />
+              </div>
             </div>
 
             {cameraError ? (
@@ -407,9 +528,14 @@ export default function P2PPaymentTerminal() {
                 {cameraError}
               </div>
             ) : (
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', textAlign: 'center', fontWeight: 600 }}>
-                Apunta la cámara al código QR en el otro teléfono
-              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)', textAlign: 'center', fontWeight: 700 }}>
+                  {cameraFacing === 'environment' ? '📷 Cámara Trasera (Autofocus HD)' : '🤳 Cámara Frontal'}
+                </p>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
+                  Apunta al código QR. Toca "Girar" para alternar entre cámaras.
+                </p>
+              </div>
             )}
           </div>
 

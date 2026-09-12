@@ -800,3 +800,69 @@ button {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ==========================================================================
+   CAMERA & QR SCANNER STYLES (CRISP FOCUS & NO BLUR)
+   ========================================================================== */
+
+#pollar-qr-reader {
+  width: 100% !important;
+  border: none !important;
+  position: relative !important;
+  background: #000000 !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+}
+
+#pollar-qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 380px !important;
+  object-fit: cover !important;
+  border-radius: 20px !important;
+  image-rendering: -webkit-optimize-contrast !important;
+  transform: translateZ(0);
+}
+
+#pollar-qr-reader canvas {
+  image-rendering: pixelated !important;
+}
+
+#pollar-qr-reader__scan_region {
+  min-height: 280px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#pollar-qr-reader img[alt="Info icon"],
+#pollar-qr-reader__dashboard,
+#pollar-qr-reader__header_message {
+  display: none !important;
+}
+
+/* Scanner target laser animation */
+.pollar-scanner-target {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.pollar-scanner-laser {
+  width: 82%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #00f2fe, #0062FF, #00f2fe, transparent);
+  box-shadow: 0 0 12px #00f2fe, 0 0 24px #0062FF;
+  animation: pollar-laser-sweep 2.2s infinite ease-in-out;
+}
+
+@keyframes pollar-laser-sweep {
+  0% { transform: translateY(-90px); opacity: 0.3; }
+  50% { transform: translateY(90px); opacity: 1; }
+  100% { transform: translateY(-90px); opacity: 0.3; }
+}
