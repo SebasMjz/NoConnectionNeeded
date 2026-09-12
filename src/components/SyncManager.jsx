@@ -244,8 +244,10 @@ export default function SyncManager() {
             </div>
             <div>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Árbol Criptográfico de Merkle</span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {merkleTree?.leaves?.length || 0} hojas criptográficas ({isEvm ? 'Keccak-256' : 'SHA-256'})
+              <span style={{ fontSize: 11, color: (merkleTree?.leaves?.length > 0) ? 'var(--color-emerald)' : 'var(--text-muted)', fontWeight: (merkleTree?.leaves?.length > 0) ? 700 : 500 }}>
+                {merkleTree?.leaves?.length > 0
+                  ? `🌳 Lote Activo: ${merkleTree.leaves.length} pago(s) (${isEvm ? 'Keccak-256' : 'SHA-256'})`
+                  : `🌱 Lote Inicial Vacío (${isEvm ? 'EVM bytes32(0)' : 'Sin pagos'})`}
               </span>
             </div>
           </div>
@@ -254,31 +256,61 @@ export default function SyncManager() {
 
         {showMerkleDetails && (
           <div style={{ paddingTop: 14, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{
-              padding: 12,
-              borderRadius: 14,
-              background: 'var(--bg-card-muted)',
-              border: '1px solid var(--border-subtle)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-main)',
-              wordBreak: 'break-all',
-              position: 'relative'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <strong style={{ color: 'var(--pollar-blue)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Merkle Root ({isEvm ? 'Keccak-256 EVM' : 'SHA-256'})
-                </strong>
-                <button onClick={copyMerkleRoot} style={{ background: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700 }}>
-                  {copiedRoot ? <Check size={12} color="var(--color-emerald)" /> : <Copy size={12} />}
-                  {copiedRoot ? 'Copiado' : 'Copiar'}
-                </button>
+            {(!merkleTree || !merkleTree.leaves || merkleTree.leaves.length === 0) ? (
+              <div style={{ padding: 14, borderRadius: 16, background: 'rgba(0, 98, 255, 0.05)', border: '1px solid rgba(0, 98, 255, 0.15)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    ℹ️ Estado Inicial: bytes32(0)
+                  </span>
+                  <span style={{ fontSize: 10, background: 'rgba(0, 98, 255, 0.1)', color: 'var(--pollar-blue)', padding: '2px 8px', borderRadius: 8, fontWeight: 700 }}>
+                    100% Normal
+                  </span>
+                </div>
+                <div style={{
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  background: '#FFFFFF',
+                  border: '1px solid #CBD5E1',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: '#64748B',
+                  wordBreak: 'break-all'
+                }}>
+                  0x0000000000000000000000000000000000000000000000000000000000000000
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, margin: 0 }}>
+                  <strong>¿Por qué ves ceros?</strong> Este es el valor nulo estándar en Ethereum (<code>bytes32(0)</code>) cuando aún no hay pagos en el lote offline. En cuanto firmes y contrafirmes tu primer pago, este hash cambiará automáticamente calculando la raíz criptográfica Keccak-256 de todas las transacciones.
+                </p>
               </div>
-              {merkleTree.rootHash || '0x0000000000000000000000000000000000000000000000000000000000000000'}
-            </div>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-              El hash raíz comprime criptográficamente todo el lote offline en una única operación inmutable sobre la blockchain de {targetNetworkName}.
-            </p>
+            ) : (
+              <>
+                <div style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'rgba(16, 185, 129, 0.05)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: 'var(--text-main)',
+                  wordBreak: 'break-all',
+                  position: 'relative'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <strong style={{ color: 'var(--color-emerald)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Merkle Root Activo ({isEvm ? 'Keccak-256 EVM' : 'SHA-256'})
+                    </strong>
+                    <button onClick={copyMerkleRoot} style={{ background: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                      {copiedRoot ? <Check size={12} color="var(--color-emerald)" /> : <Copy size={12} />}
+                      {copiedRoot ? 'Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>{merkleTree.rootHash}</span>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  El hash raíz comprime criptográficamente todo el lote de {merkleTree.leaves.length} pago(s) en una única operación inmutable sobre la blockchain de {targetNetworkName}.
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>
