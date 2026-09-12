@@ -365,16 +365,16 @@ export async function verifyMerkleProof(proof) {
 }
 
 /**
- * Generates Reliable High-Res QR Code Data URL
+ * Generates Reliable High-Res Pure Black and White QR Code Data URL
  */
-export async function generateQrDataUrl(dataObject, colorDark = '#00f2fe') {
+export async function generateQrDataUrl(dataObject, colorDark = '#000000') {
   const jsonString = typeof dataObject === 'string' ? dataObject : JSON.stringify(dataObject);
   return QRCode.toDataURL(jsonString, {
-    width: 320,
-    margin: 2,
+    width: 480,
+    margin: 3,
     color: {
-      dark: colorDark,
-      light: '#07090e'
+      dark: '#000000',
+      light: '#FFFFFF'
     },
     errorCorrectionLevel: 'M'
   });

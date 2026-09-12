@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { generateQrDataUrl } from '../services/stellarCrypto';
+import { downloadQrImage, shareQrToWhatsApp, scanQrFromImageFile } from '../utils/qrSharing';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 import {
@@ -19,7 +20,11 @@ import {
   X,
   Sparkles,
   Smartphone,
-  SwitchCamera
+  SwitchCamera,
+  Download,
+  MessageCircle,
+  Image,
+  Upload
 } from 'lucide-react';
 
 export default function P2PPaymentTerminal() {
@@ -61,7 +66,45 @@ export default function P2PPaymentTerminal() {
   const [payloadError, setPayloadError] = useState('');
   const [isCounterSigning, setIsCounterSigning] = useState(false);
 
+  // File upload scanner state
+  const fileInputRef = useRef(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const scannerRef = useRef(null);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFeedback({ type: '', message: '' });
+    setIsUploadingImage(true);
+
+    try {
+      if (isScanning) {
+        stopCamera();
+      }
+
+      const decodedText = await scanQrFromImageFile(file);
+      if (decodedText) {
+        if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+        setFeedback({ type: 'success', message: '¡Código QR detectado y leído exitosamente desde la imagen!' });
+        await handleScannedData(decodedText);
+      }
+    } catch (err) {
+      console.error('File scan error:', err);
+      setFeedback({ 
+        type: 'error', 
+        message: err.message || 'No se pudo leer el código QR de la imagen. Verifica que sea legible.' 
+      });
+    } finally {
+      setIsUploadingImage(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  };
 
   const availableOffline = deviceA.derivedOffline - deviceA.spentOffline;
   const quickAmounts = ['1.00', '2.50', '5.00', '10.00', '20.00'];
@@ -73,7 +116,7 @@ export default function P2PPaymentTerminal() {
     }
   }, [deviceB.publicKey, deviceA.publicKey]);
 
-  // Generate Invoice QR in Receive Mode
+  // Generate Invoice QR in Receive Mode (Pure Black & White)
   useEffect(() => {
     if (mode === 'receive') {
       generateQrDataUrl({
@@ -83,17 +126,17 @@ export default function P2PPaymentTerminal() {
         asset: deviceB.asset,
         memo: receiveMemo,
         timestamp: Date.now(),
-      }, '#0062FF').then(setInvoiceQr);
+      }).then(setInvoiceQr);
     }
   }, [mode, receiveAmount, receiveMemo, deviceB.publicKey, deviceB.asset]);
 
-  // Generate Payment QR when signed
+  // Generate Payment QR when signed (Pure Black & White)
   useEffect(() => {
     if (pendingTx) {
       generateQrDataUrl({
         type: 'POLLAR_PAYMENT_PAYLOAD',
         tx: pendingTx
-      }, '#10B981').then(setPaymentQr);
+      }).then(setPaymentQr);
     }
   }, [pendingTx]);
 
@@ -540,8 +583,34 @@ export default function P2PPaymentTerminal() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Upload QR Image from Gallery */}
+              <button
+                type="button"
+                onClick={triggerFileSelect}
+                title="Subir QR desde Galería o WhatsApp"
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 20,
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                }}
+              >
+                <Image size={15} />
+                <span>Galería</span>
+              </button>
+
               {/* Flip Camera Button */}
               <button
+                type="button"
                 onClick={flipCamera}
                 disabled={isSwitchingCamera}
                 title="Girar Cámara (Trasera / Frontal)"
@@ -567,6 +636,7 @@ export default function P2PPaymentTerminal() {
 
               {/* Close Button */}
               <button
+                type="button"
                 onClick={stopCamera}
                 style={{
                   width: 38,
@@ -577,7 +647,8 @@ export default function P2PPaymentTerminal() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  border: 'none'
                 }}
               >
                 <X size={20} />
@@ -659,28 +730,54 @@ export default function P2PPaymentTerminal() {
             </span>
           </div>
 
-          {/* Quick Scan Invoice Button */}
-          <button
-            onClick={() => startCamera('invoice')}
-            style={{
-              width: '100%',
-              padding: '14px 16px',
-              borderRadius: 16,
-              background: 'var(--pollar-blue-light)',
-              border: '1.5px solid rgba(0, 98, 255, 0.25)',
-              color: 'var(--pollar-blue)',
-              fontSize: 13,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <Camera size={18} />
-            <span>Escanear Factura QR del Comercio</span>
-          </button>
+          {/* Quick Scan or Upload Invoice Buttons */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => startCamera('invoice')}
+              style={{
+                padding: '12px 14px',
+                borderRadius: 16,
+                background: 'var(--pollar-blue-light)',
+                border: '1.5px solid rgba(0, 98, 255, 0.25)',
+                color: 'var(--pollar-blue)',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Camera size={17} />
+              <span>Escanear Cámara</span>
+            </button>
+            <button
+              type="button"
+              onClick={triggerFileSelect}
+              disabled={isUploadingImage}
+              style={{
+                padding: '12px 14px',
+                borderRadius: 16,
+                background: '#F8FAFC',
+                border: '1.5px solid #CBD5E1',
+                color: '#334155',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Image size={17} />
+              <span>{isUploadingImage ? 'Leyendo...' : 'Subir de Galería'}</span>
+            </button>
+          </div>
 
           <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             
@@ -790,7 +887,16 @@ export default function P2PPaymentTerminal() {
           <img 
             src={paymentQr} 
             alt="QR Pago" 
-            style={{ width: 220, height: 220, borderRadius: 18, background: '#FFFFFF', padding: 12, border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }} 
+            style={{ 
+              width: 220, 
+              height: 220, 
+              borderRadius: 18, 
+              background: '#FFFFFF', 
+              padding: 12, 
+              border: '2px solid #CBD5E1', 
+              boxShadow: 'var(--shadow-card)',
+              imageRendering: 'pixelated'
+            }} 
           />
 
           <div>
@@ -798,8 +904,60 @@ export default function P2PPaymentTerminal() {
               ${pendingTx.payload.amount} {pendingTx.payload.asset}
             </span>
             <p style={{ fontSize: 12, color: 'var(--color-emerald)', fontWeight: 700, marginTop: 4 }}>
-              👉 Muestra este QR al comercio para que lo escanee y contrafirme
+              👉 Muestra este QR al comercio o envíalo por WhatsApp
             </p>
+          </div>
+
+          {/* Action Buttons: Download & WhatsApp */}
+          <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 300, marginTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => downloadQrImage(paymentQr, `pollar_pago_${pendingTx.payload.amount}_${pendingTx.payload.asset}.png`)}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 14,
+                background: '#F1F5F9',
+                border: '1px solid #CBD5E1',
+                color: '#334155',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer'
+              }}
+            >
+              <Download size={15} /> Descargar
+            </button>
+            <button
+              type="button"
+              onClick={() => shareQrToWhatsApp({
+                dataUrl: paymentQr,
+                title: 'Pago Offline Pollar Firmado',
+                text: `Comprobante de Pago Firmado:\nMonto: $${pendingTx.payload.amount} ${pendingTx.payload.asset}\nDe: ${pendingTx.payload.payer.slice(0, 8)}...\nPara: ${pendingTx.payload.payee.slice(0, 8)}...\nNonce: #${pendingTx.payload.nonce}`,
+                filename: `pollar_pago_${pendingTx.payload.amount}.png`
+              })}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 14,
+                background: '#25D366',
+                border: 'none',
+                color: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)'
+              }}
+            >
+              <MessageCircle size={16} /> WhatsApp
+            </button>
           </div>
         </div>
       )}
@@ -818,28 +976,54 @@ export default function P2PPaymentTerminal() {
             </p>
           </div>
 
-          {/* Quick Scan Customer's Payment QR */}
-          <button
-            onClick={() => startCamera('payment')}
-            style={{
-              width: '100%',
-              padding: '14px 16px',
-              borderRadius: 16,
-              background: 'var(--color-emerald-bg)',
-              border: '1.5px solid rgba(16, 185, 129, 0.3)',
-              color: 'var(--color-emerald)',
-              fontSize: 13,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <Camera size={18} />
-            <span>Escanear QR de Pago del Cliente</span>
-          </button>
+          {/* Quick Scan or Upload Customer Payment QR */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => startCamera('payment')}
+              style={{
+                padding: '12px 14px',
+                borderRadius: 16,
+                background: 'var(--color-emerald-bg)',
+                border: '1.5px solid rgba(16, 185, 129, 0.3)',
+                color: 'var(--color-emerald)',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Camera size={17} />
+              <span>Escanear Cámara</span>
+            </button>
+            <button
+              type="button"
+              onClick={triggerFileSelect}
+              disabled={isUploadingImage}
+              style={{
+                padding: '12px 14px',
+                borderRadius: 16,
+                background: '#F8FAFC',
+                border: '1.5px solid #CBD5E1',
+                color: '#334155',
+                fontSize: 12,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Image size={17} />
+              <span>{isUploadingImage ? 'Leyendo...' : 'Subir de Galería'}</span>
+            </button>
+          </div>
 
           {/* Manual Counter-Sign Button */}
           <button
@@ -893,15 +1077,76 @@ export default function P2PPaymentTerminal() {
               <img 
                 src={invoiceQr} 
                 alt="Factura QR" 
-                style={{ width: 200, height: 200, borderRadius: 18, background: '#FFFFFF', padding: 12, border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }} 
+                style={{ 
+                  width: 200, 
+                  height: 200, 
+                  borderRadius: 18, 
+                  background: '#FFFFFF', 
+                  padding: 12, 
+                  border: '2px solid #CBD5E1', 
+                  boxShadow: 'var(--shadow-card)',
+                  imageRendering: 'pixelated'
+                }} 
               />
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>
                   ${receiveAmount} {deviceB.asset}
                 </span>
                 <p style={{ fontSize: 12, color: 'var(--pollar-blue)', fontWeight: 700, marginTop: 2 }}>
-                  Factura lista para escanear por el pagador
+                  Factura lista para escanear o enviar por WhatsApp
                 </p>
+              </div>
+
+              {/* Action Buttons: Download & WhatsApp */}
+              <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 280, marginTop: 2 }}>
+                <button
+                  type="button"
+                  onClick={() => downloadQrImage(invoiceQr, `pollar_factura_${receiveAmount}_${deviceB.asset}.png`)}
+                  style={{
+                    flex: 1,
+                    padding: '9px 12px',
+                    borderRadius: 14,
+                    background: '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    color: '#334155',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Download size={14} /> Descargar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shareQrToWhatsApp({
+                    dataUrl: invoiceQr,
+                    title: `Factura de Cobro Pollar: $${receiveAmount} ${deviceB.asset}`,
+                    text: `Factura de Cobro Pollar:\nMonto: $${receiveAmount} ${deviceB.asset}\nConcepto: ${receiveMemo || 'Cobro'}\nDestino: ${deviceB.publicKey.slice(0, 8)}...`,
+                    filename: `pollar_factura_${receiveAmount}.png`
+                  })}
+                  style={{
+                    flex: 1,
+                    padding: '9px 12px',
+                    borderRadius: 14,
+                    background: '#25D366',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)'
+                  }}
+                >
+                  <MessageCircle size={15} /> WhatsApp
+                </button>
               </div>
             </div>
           )}
@@ -1148,6 +1393,15 @@ export default function P2PPaymentTerminal() {
           </div>
         </div>
       )}
+
+      {/* Hidden File Input for Gallery / WhatsApp QR Image Upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        style={{ display: 'none' }}
+      />
 
     </div>
   );

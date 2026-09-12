@@ -283,16 +283,16 @@ export function verifyEvmMerkleProof(proof) {
 }
 
 /**
- * Generates high-res QR Code Data URL with customizable theme
+ * Generates high-res pure black and white QR Code Data URL
  */
-export async function generateEvmQrDataUrl(dataObject, colorDark = '#00f2fe') {
+export async function generateEvmQrDataUrl(dataObject, colorDark = '#000000') {
   const jsonString = typeof dataObject === 'string' ? dataObject : JSON.stringify(dataObject);
   return QRCode.toDataURL(jsonString, {
-    width: 320,
-    margin: 2,
+    width: 480,
+    margin: 3,
     color: {
-      dark: colorDark,
-      light: '#07090e'
+      dark: '#000000',
+      light: '#FFFFFF'
     },
     errorCorrectionLevel: 'M'
   });

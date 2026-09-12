@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { generateEvmQrDataUrl, EVM_NETWORKS } from '../services/evmCrypto';
+import { downloadQrImage, shareQrToWhatsApp } from '../utils/qrSharing';
 import {
   Lock,
   ArrowRightLeft,
@@ -22,7 +23,9 @@ import {
   Plus,
   QrCode,
   ExternalLink,
-  X
+  X,
+  Download,
+  MessageCircle
 } from 'lucide-react';
 
 export default function WalletVault({ onNavigate, onOpenLinkModal }) {
@@ -95,7 +98,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   // Generate QR Code for receiving funds
   useEffect(() => {
     if (showReceiveModal && currentAccount.publicKey) {
-      generateEvmQrDataUrl(currentAccount.publicKey, '#0062FF').then(setReceiveQrUrl);
+      generateEvmQrDataUrl(currentAccount.publicKey).then(setReceiveQrUrl);
     }
   }, [showReceiveModal, currentAccount.publicKey]);
 
@@ -517,16 +520,79 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 <img 
                   src={receiveQrUrl} 
                   alt="QR Code" 
-                  style={{ width: 180, height: 180, borderRadius: 16, border: '3px solid #E2E8F0', padding: 6, background: '#FFFFFF' }}
+                  style={{ 
+                    width: 190, 
+                    height: 190, 
+                    borderRadius: 16, 
+                    border: '3px solid #E2E8F0', 
+                    padding: 8, 
+                    background: '#FFFFFF',
+                    imageRendering: 'pixelated',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.06)'
+                  }}
                 />
               ) : (
-                <div style={{ width: 180, height: 180, borderRadius: 16, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 190, height: 190, borderRadius: 16, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <QrCode size={48} opacity={0.3} />
                 </div>
               )}
               <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>
                 Escanea desde MetaMask o tu billetera EVM
               </span>
+
+              {/* Action Buttons: Download & WhatsApp */}
+              {receiveQrUrl && (
+                <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 280, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => downloadQrImage(receiveQrUrl, `pollar_wallet_${currentAccount.publicKey.slice(0, 6)}.png`)}
+                    style={{
+                      flex: 1,
+                      padding: '9px 12px',
+                      borderRadius: 12,
+                      background: '#F1F5F9',
+                      border: '1px solid #CBD5E1',
+                      color: '#334155',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Download size={14} /> Descargar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => shareQrToWhatsApp({
+                      dataUrl: receiveQrUrl,
+                      title: 'Billetera Pollar (Recibir USDC / Gas)',
+                      text: `Dirección de mi Billetera Pollar:\n${currentAccount.publicKey}\n\nRed: Ethereum Sepolia Testnet (USDC / ETH)`,
+                      filename: `pollar_wallet_${currentAccount.publicKey.slice(0, 6)}.png`
+                    })}
+                    style={{
+                      flex: 1,
+                      padding: '9px 12px',
+                      borderRadius: 12,
+                      background: '#25D366',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)'
+                    }}
+                  >
+                    <MessageCircle size={15} /> WhatsApp
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Address Box */}
