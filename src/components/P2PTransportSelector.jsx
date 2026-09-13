@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
-  QrCode, Bluetooth, Wifi, Nfc, AlertCircle, Loader2, CheckCircle2, X, Copy, Check
+  QrCode, Bluetooth, Wifi, Nfc, AlertCircle, Loader2, CheckCircle2, X, Copy, Check, ArrowRight
 } from 'lucide-react';
 import { getBluetoothService } from '../services/BluetoothService';
 import { getNFCService } from '../services/NFCService';
 import { getWifiDirectService } from '../services/WifiDirectService';
 
-export default function P2PTransportSelector({ onClose, payload }) {
+export default function P2PTransportSelector({ onClose, payload, onPayloadCopied }) {
   const [availableTransports, setAvailableTransports] = useState([]);
   const [checking, setChecking] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -76,8 +76,10 @@ export default function P2PTransportSelector({ onClose, payload }) {
 
   const handleCopy = () => {
     if (payload) {
-      navigator.clipboard.writeText(JSON.stringify(payload));
+      const json = JSON.stringify(payload);
+      navigator.clipboard.writeText(json);
       setCopied(true);
+      if (onPayloadCopied) onPayloadCopied(json);
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -131,20 +133,23 @@ export default function P2PTransportSelector({ onClose, payload }) {
         </div>
       )}
 
-      {/* Copy to clipboard fallback */}
-      <div style={{ marginTop: 16, padding: 12, borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>O copia el payload para compartir por cualquier medio:</span>
+      {/* Copy to clipboard - PRIMARY ACTION for testing */}
+      <div style={{ marginTop: 16, padding: 14, borderRadius: 14, background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0, 98, 255, 0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)' }}>Copiar payload para testing</span>
           <button onClick={handleCopy} style={{
-            padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-            background: copied ? 'var(--color-emerald-bg)' : 'var(--pollar-blue-light)',
-            color: copied ? 'var(--color-emerald)' : 'var(--pollar-blue)',
-            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 800,
+            background: copied ? 'var(--color-emerald-bg)' : 'var(--pollar-blue)',
+            color: copied ? 'var(--color-emerald)' : '#fff',
+            display: 'flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
           }}>
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? 'Copiado' : 'Copiar'}
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? 'Copiado!' : 'Copiar payload'}
           </button>
         </div>
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+          Copia el payload y pégalo en "Terminal Cobrar (B)" → "Importar pago" para simular el pago P2P en un solo dispositivo.
+        </p>
       </div>
 
       {availableTransports.length === 1 && (

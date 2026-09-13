@@ -16,7 +16,12 @@ import {
   Bluetooth,
   Wifi,
   Nfc,
-  ChevronRight
+  ChevronRight,
+  Copy,
+  Check,
+  ClipboardPaste,
+  Download,
+  Upload
 } from 'lucide-react';
 
 export default function P2PPaymentTerminal({ onOpenTransport }) {
@@ -41,11 +46,12 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [handshakeStep, setHandshakeStep] = useState(0);
   const [scanError, setScanError] = useState('');
-  const [showManualCounterSign, setShowManualCounterSign] = useState(false);
-  const [manualPayload, setManualPayload] = useState('');
-  const [parsedPayload, setParsedPayload] = useState(null);
-  const [payloadError, setPayloadError] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPayload, setImportPayload] = useState('');
+  const [parsedImport, setParsedImport] = useState(null);
+  const [importError, setImportError] = useState('');
   const [isCounterSigning, setIsCounterSigning] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const barcodeService = useRef(getBarcodeService());
 
@@ -143,19 +149,19 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     }
   };
 
-  const handleManualCounterSign = async () => {
-    if (!parsedPayload) return;
+  const handleImportPayload = async () => {
+    if (!parsedImport) return;
     setIsCounterSigning(true);
     setFeedback({ type: '', message: '' });
     try {
-      const tx = parsedPayload.tx;
+      const tx = parsedImport.tx;
       setHandshakeStep(3);
       await receiveAndCounterSign(tx, 'device_b');
       setFeedback({ type: 'success', message: `¡Pago Bilateral Confirmado! +${tx.payload.amount} ${tx.payload.asset}` });
       try { confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 }, colors: ['#10B981', '#0062FF'] }); } catch (e) {}
-      setShowManualCounterSign(false);
-      setManualPayload('');
-      setParsedPayload(null);
+      setShowImportModal(false);
+      setImportPayload('');
+      setParsedImport(null);
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al contrafirmar' });
     } finally {
@@ -163,21 +169,29 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     }
   };
 
-  const handleParseManualPayload = (raw) => {
-    setManualPayload(raw);
-    setPayloadError('');
-    setParsedPayload(null);
+  const handleParseImport = (raw) => {
+    setImportPayload(raw);
+    setImportError('');
+    setParsedImport(null);
     if (!raw?.trim()) return;
     try {
       const data = JSON.parse(raw);
       const tx = data.tx || data;
       if (!tx || (!tx.txHash && !tx.payerSignature)) {
-        setPayloadError('JSON no contiene payload válido');
+        setImportError('JSON no contiene payload de pago válido');
         return;
       }
-      setParsedPayload({ raw: data, tx });
+      setParsedImport({ raw: data, tx });
     } catch (e) {
-      setPayloadError('JSON inválido: ' + e.message);
+      setImportError('JSON inválido: ' + e.message);
+    }
+  };
+
+  const handleCopyPayload = () => {
+    if (pendingTx) {
+      navigator.clipboard.writeText(JSON.stringify(pendingTx));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -238,12 +252,12 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         </div>
       )}
 
-      {/* SEND MODE */}
+      {/* ==================== SENDER MODE (Payer A) ==================== */}
       {mode === 'pay' && (
         <div className="pollar-panel">
           <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
             <div>
-              <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Transferir a Destinatario</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Enviar Pago a Comercio</h3>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                 Disponible en Bóveda: <strong style={{ color: 'var(--pollar-blue)' }}>{availableOffline.toFixed(2)} {deviceA.asset}</strong>
               </p>
@@ -253,30 +267,19 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
             </span>
           </div>
 
-          {/* Scan + Transport Row */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={startScan} style={{
-              flex: 1, padding: '14px 16px', borderRadius: 16,
-              background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0, 98, 255, 0.25)',
-              color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-              <Camera size={18} /> Escanear QR
-            </button>
-            {onOpenTransport && (
-              <button onClick={onOpenTransport} style={{
-                width: 52, padding: '14px 0', borderRadius: 16,
-                background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
-                color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Bluetooth size={18} />
-              </button>
-            )}
-          </div>
+          {/* Scan Invoice Button */}
+          <button onClick={startScan} style={{
+            width: '100%', padding: '14px 16px', borderRadius: 16,
+            background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
+            color: 'var(--text-muted)', fontSize: 13, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <Camera size={18} /> Escanear Factura QR del Comercio
+          </button>
 
           <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Dirección de Destino (Stellar G...)</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Dirección del Comercio (Stellar G...)</label>
               <input type="text" value={payeeAddress} onChange={(e) => setPayeeAddress(e.target.value)}
                 className="pollar-input" style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }} placeholder="G..." required />
             </div>
@@ -323,23 +326,52 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         </div>
       )}
 
-      {/* PAYMENT QR PRESENTATION */}
+      {/* ==================== PAYMENT QR + SHARE (Payer A) ==================== */}
       {pendingTx && paymentQr && mode === 'pay' && (
         <div className="pollar-panel" style={{ border: '2px solid var(--color-emerald)', alignItems: 'center', textAlign: 'center', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)', background: 'var(--color-emerald-bg)', padding: '6px 14px', borderRadius: 20 }}>
             <ShieldCheck size={18} /> Pago Criptográfico Firmado (Ed25519)
           </div>
+          
           <img src={paymentQr} alt="QR Pago" style={{ width: 220, height: 220, borderRadius: 18, background: '#FFFFFF', padding: 12, border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }} />
+          
           <div>
-            <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>${pendingTx.payload.amount} {pendingTx.payload.asset}</span>
+            <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>
+              ${pendingTx.payload.amount} {pendingTx.payload.asset}
+            </span>
             <p style={{ fontSize: 12, color: 'var(--color-emerald)', fontWeight: 700, marginTop: 4 }}>
-              Muestra este QR al comercio para que lo escanee y contrafirme
+              Muestra este QR al comercio o comparte el payload
             </p>
+          </div>
+
+          {/* Share buttons */}
+          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+            <button onClick={handleCopyPayload} style={{
+              flex: 1, padding: '12px', borderRadius: 14,
+              background: copied ? 'var(--color-emerald-bg)' : 'var(--pollar-blue-light)',
+              border: '1.5px solid', borderColor: copied ? 'rgba(16, 185, 129, 0.3)' : 'rgba(0, 98, 255, 0.25)',
+              color: copied ? 'var(--color-emerald)' : 'var(--pollar-blue)',
+              fontSize: 12, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'Copiado!' : 'Copiar payload'}
+            </button>
+            {onOpenTransport && (
+              <button onClick={onOpenTransport} style={{
+                flex: 1, padding: '12px', borderRadius: 14,
+                background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
+                color: 'var(--text-muted)', fontSize: 12, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                <Bluetooth size={16} /> Compartir por...
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* RECEIVE MODE */}
+      {/* ==================== RECEIVE MODE (Merchant B) ==================== */}
       {mode === 'receive' && (
         <div className="pollar-panel">
           <div>
@@ -347,39 +379,28 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               <ArrowDownLeft size={20} color="var(--color-emerald)" /> Terminal de Cobro POS
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              Paso 1: Muestra esta factura al cliente → Paso 2: Escanea su pago firmado
+              Paso 1: Genera factura → Paso 2: Escanea pago del cliente o importa payload
             </p>
           </div>
 
-          {/* Scan + Transport Row */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={startScan} style={{
-              flex: 1, padding: '14px 16px', borderRadius: 16,
-              background: 'var(--color-emerald-bg)', border: '1.5px solid rgba(16, 185, 129, 0.3)',
-              color: 'var(--color-emerald)', fontSize: 13, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-              <Camera size={18} /> Escanear QR de Pago
-            </button>
-            {onOpenTransport && (
-              <button onClick={onOpenTransport} style={{
-                width: 52, padding: '14px 0', borderRadius: 16,
-                background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
-                color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Bluetooth size={18} />
-              </button>
-            )}
-          </div>
+          {/* Scan Payment QR */}
+          <button onClick={startScan} style={{
+            width: '100%', padding: '14px 16px', borderRadius: 16,
+            background: 'var(--color-emerald-bg)', border: '1.5px solid rgba(16, 185, 129, 0.3)',
+            color: 'var(--color-emerald)', fontSize: 13, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <Camera size={18} /> Escanear QR de Pago del Cliente
+          </button>
 
-          {/* Manual fallback */}
-          <button onClick={() => setShowManualCounterSign(true)} style={{
+          {/* Import payload manually */}
+          <button onClick={() => setShowImportModal(true)} style={{
             width: '100%', padding: '14px 16px', borderRadius: 16,
             background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0, 98, 255, 0.25)',
             color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-            <QrCode size={18} /> Ingresar payload manualmente
+            <ClipboardPaste size={18} /> Importar pago (pegar payload)
           </button>
 
           {/* Invoice QR Display */}
@@ -400,30 +421,33 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         </div>
       )}
 
-      {/* Manual Counter-Sign Modal */}
-      {showManualCounterSign && (
-        <div className="pollar-modal-overlay" onClick={() => setShowManualCounterSign(false)}>
+      {/* ==================== IMPORT PAYMENT MODAL (Merchant B) ==================== */}
+      {showImportModal && (
+        <div className="pollar-modal-overlay" onClick={() => setShowImportModal(false)}>
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Contrafirmar Pago Manual</h3>
-              <button onClick={() => setShowManualCounterSign(false)} className="pollar-icon-btn"><X size={18} /></button>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Importar Pago del Cliente</h3>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pega el payload que copiaste del pagador</p>
+              </div>
+              <button onClick={() => setShowImportModal(false)} className="pollar-icon-btn"><X size={18} /></button>
             </div>
             <div style={{ paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <textarea
-                value={manualPayload}
-                onChange={(e) => handleParseManualPayload(e.target.value)}
-                placeholder='Pega el JSON del payload de pago aquí...'
+                value={importPayload}
+                onChange={(e) => handleParseImport(e.target.value)}
+                placeholder='Pega aquí el JSON del payload de pago...'
                 style={{ width: '100%', height: 120, padding: 12, borderRadius: 14, border: '1px solid var(--border-subtle)', fontSize: 11, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
               />
-              {payloadError && <div style={{ padding: 10, borderRadius: 12, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', fontSize: 12 }}>{payloadError}</div>}
-              {parsedPayload && (
+              {importError && <div style={{ padding: 10, borderRadius: 12, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', fontSize: 12 }}>{importError}</div>}
+              {parsedImport && (
                 <div style={{ padding: 12, borderRadius: 14, background: 'var(--color-emerald-bg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-emerald)' }}>Payload válido</span>
-                  <span style={{ fontSize: 18, fontWeight: 900 }}>${parsedPayload.tx.payload.amount} {parsedPayload.tx.payload.asset}</span>
-                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>De: {parsedPayload.tx.payload.payer?.slice(0, 16)}...</span>
+                  <span style={{ fontSize: 18, fontWeight: 900 }}>${parsedImport.tx.payload.amount} {parsedImport.tx.payload.asset}</span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>De: {parsedImport.tx.payload.payer?.slice(0, 16)}...</span>
                 </div>
               )}
-              <button onClick={handleManualCounterSign} disabled={!parsedPayload || isCounterSigning} className="pollar-btn-primary">
+              <button onClick={handleImportPayload} disabled={!parsedImport || isCounterSigning} className="pollar-btn-primary">
                 {isCounterSigning ? 'Contrafirmando...' : 'Confirmar Contrafirma'}
               </button>
             </div>
