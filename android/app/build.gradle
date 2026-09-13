@@ -40,6 +40,15 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // Google Sign-In (for OAuth / Wallet login)
+    implementation 'com.google.android.gms:play-services-auth:21.3.0'
+
+    // Biometric (fingerprint / face unlock)
+    implementation 'androidx.biometric:biometric:1.2.0-alpha05'
+
+    // Security (EncryptedSharedPreferences — used by @capacitor/preferences on Android)
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 }
 
 apply from: 'capacitor.build.gradle'

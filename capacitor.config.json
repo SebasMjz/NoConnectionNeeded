@@ -1,6 +1,6 @@
 {
   "appId": "com.pollar.stellarp2p",
-  "appName": "Pollar Stellar Offline",
+  "appName": "Pollar Pay",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
@@ -8,5 +8,26 @@
   "android": {
     "backgroundColor": "#07090e",
     "allowMixedContent": true
+  },
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": [
+        "profile",
+        "email"
+      ],
+      "serverClientId": "REPLACE_WITH_YOUR_WEB_CLIENT_ID_FROM_GOOGLE_CLOUD_CONSOLE",
+      "forceCodeForRefreshToken": true
+    },
+    "Preferences": {
+      "group": "com.pollar.stellarp2p.prefs"
+    },
+    "NativeBiometric": {
+      "useFallbackAuthentication": true
+    },
+    "BarcodeScanner": {
+      "android": {
+        "useFallback": true
+      }
+    }
   }
 }

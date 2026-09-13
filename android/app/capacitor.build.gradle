@@ -10,7 +10,10 @@ android {
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
     implementation project(':capacitor-barcode-scanner')
+    implementation project(':capacitor-preferences')
+    implementation project(':codetrix-studio-capacitor-google-auth')
     implementation project(':capacitor-native-biometric')
+    implementation project(':capacitor-secure-storage-plugin')
 
 }
 

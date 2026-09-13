@@ -213,8 +213,8 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         </div>
       </div>
 
-      {/* Read-only warning */}
-      {activeWallet.isReadOnly && (
+      {/* Read-only warning for manual imported accounts */}
+      {activeWallet.isReadOnly && !activeWallet.isPollar && (
         <div style={{
           padding: '12px 16px', borderRadius: 16,
           background: 'var(--color-amber-bg)', border: '1px solid rgba(245,158,11,0.3)',
@@ -222,6 +222,18 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         }}>
           <AlertTriangle size={16} />
           <span>Billetera de sólo lectura — importa la clave secreta (S...) para firmar pagos.</span>
+        </div>
+      )}
+
+      {/* Pollar Managed Wallet Status */}
+      {activeWallet.isPollar && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 16,
+          background: 'var(--pollar-blue-light)', border: '1px solid rgba(0, 98, 255, 0.2)',
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)'
+        }}>
+          <Sparkles size={16} />
+          <span>Billetera provista por Pollar — Custodia protegida y vinculada automáticamente.</span>
         </div>
       )}
 

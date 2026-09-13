@@ -1,35 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import {
   Plus, Wallet, Trash2, CheckCircle2, Copy, AlertCircle,
-  Eye, EyeOff, X, ChevronRight, Loader2, KeyRound, Shield
+  Eye, EyeOff, X, ChevronRight, Loader2, KeyRound, Shield,
+  Star, Link2, Unlink, RefreshCw
 } from 'lucide-react';
-import { generateRealStellarKeypair, importStellarAccount, fetchRealAccountBalances } from '../services/stellarCrypto';
-
-const WALLETS_KEY = 'pollar_wallets';
-
-function loadWallets() {
-  try {
-    return JSON.parse(localStorage.getItem(WALLETS_KEY) || '[]');
-  } catch { return []; }
-}
-
-function saveWallets(wallets) {
-  localStorage.setItem(WALLETS_KEY, JSON.stringify(wallets));
-}
+import { useWallet } from '../context/WalletContext';
+import {
+  generateRealStellarKeypair,
+  importStellarAccount,
+} from '../services/stellarCrypto';
 
 function truncateKey(key, chars = 8) {
   if (!key) return '';
   return key.length > chars * 2 ? `${key.slice(0, chars)}...${key.slice(-chars)}` : key;
 }
 
-export default function WalletRegistry({ onClose }) {
-  const [wallets, setWallets] = useState(loadWallets);
+/**
+ * WalletRegistry
+ *
+ * Displays and manages the user's linked Stellar wallets.
+ * Reads from / writes to WalletContext (linkedWallets).
+ *
+ * Props:
+ *  onClose: () => void | null (null = embedded mode)
+ *  embedded: boolean — if true, renders without the bottom sheet chrome
+ */
+export default function WalletRegistry({ onClose = null, embedded = false }) {
+  const {
+    linkedWallets,
+    activeWallet,
+    activeWalletId,
+    linkWallet,
+    unlinkWallet,
+    selectActiveWallet,
+    refreshOnlineBalance,
+    isRefreshingBalance,
+  } = useWallet();
+
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'create' | 'import'
-  const [showSecret, setShowSecret] = useState({}); // { [id]: boolean }
+  const [showSecret, setShowSecret] = useState({});
   const [feedback, setFeedback] = useState({ type: '', message: '' });
-  const [selectedWallet, setSelectedWallet] = useState(null);
-  const [balances, setBalances] = useState({}); // { [publicKey]: balance }
-  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [loadingBalance, setLoadingBalance] = useState({});
 
   // ─── Create wallet ──────────────────────────────────────────────────
   const [newName, setNewName] = useState('');
@@ -41,25 +52,24 @@ export default function WalletRegistry({ onClose }) {
       return;
     }
     const kp = generateRealStellarKeypair();
-    const w = {
-      id: 'w_' + Math.random().toString(36).slice(2, 9),
-      name: newName.trim(),
+    setCreatedWallet({
       publicKey: kp.publicKey,
       secretKey: kp.secretKey,
-      createdAt: Date.now(),
-    };
-    setCreatedWallet(w);
+      name: newName.trim(),
+    });
     setFeedback({ type: '', message: '' });
   };
 
   const handleConfirmCreatedWallet = () => {
-    const updated = [createdWallet, ...wallets];
-    saveWallets(updated);
-    setWallets(updated);
+    linkWallet({
+      publicKey: createdWallet.publicKey,
+      secretKey: createdWallet.secretKey,
+      name: createdWallet.name,
+    });
     setCreatedWallet(null);
     setNewName('');
     setActiveTab('list');
-    setFeedback({ type: 'success', message: `Billetera "${createdWallet.name}" creada` });
+    setFeedback({ type: 'success', message: `Billetera "${createdWallet.name}" creada y vinculada` });
     setTimeout(() => setFeedback({ type: '', message: '' }), 3000);
   };
 
@@ -83,249 +93,346 @@ export default function WalletRegistry({ onClose }) {
       setFeedback({ type: 'error', message: err.message || 'Clave inválida' });
       return;
     }
-    const w = {
-      id: 'w_' + Math.random().toString(36).slice(2, 9),
-      name: importName.trim(),
+    linkWallet({
       publicKey: result.publicKey,
       secretKey: result.secretKey || null,
-      createdAt: Date.now(),
-    };
-    const updated = [w, ...wallets];
-    saveWallets(updated);
-    setWallets(updated);
+      name: importName.trim(),
+      isReadOnly: result.isReadOnly,
+    });
     setImportInput('');
     setImportName('');
     setActiveTab('list');
-    setFeedback({ type: 'success', message: `Billetera "${w.name}" importada` });
+    setFeedback({ type: 'success', message: `Billetera "${importName}" vinculada` });
     setTimeout(() => setFeedback({ type: '', message: '' }), 3000);
   };
 
-  // ─── Delete wallet ──────────────────────────────────────────────────
-  const handleDelete = (id) => {
-    const updated = wallets.filter(w => w.id !== id);
-    saveWallets(updated);
-    setWallets(updated);
-    setFeedback({ type: 'success', message: 'Billetera eliminada' });
+  // ─── Unlink wallet ──────────────────────────────────────────────────
+  const handleUnlink = (walletId, name) => {
+    if (!window.confirm(`¿Desvincular "${name}"? Esto no elimina la cuenta Stellar.`)) return;
+    unlinkWallet(walletId);
+    setFeedback({ type: 'success', message: `"${name}" desvinculada` });
     setTimeout(() => setFeedback({ type: '', message: '' }), 2000);
   };
 
-  // ─── Copy public key ────────────────────────────────────────────────
+  // ─── Copy key ──────────────────────────────────────────────────────
   const copyKey = (key) => {
     navigator.clipboard.writeText(key).catch(() => {});
     setFeedback({ type: 'success', message: 'Clave copiada al portapapeles' });
     setTimeout(() => setFeedback({ type: '', message: '' }), 2000);
   };
 
-  // ─── Load balances ─────────────────────────────────────────────────
-  const loadBalances = async () => {
-    setLoadingBalances(true);
-    const results = {};
-    for (const w of wallets) {
-      try {
-        const r = await fetchRealAccountBalances(w.publicKey);
-        results[w.publicKey] = r.primaryBalance || 0;
-      } catch {
-        results[w.publicKey] = null;
-      }
-    }
-    setBalances(results);
-    setLoadingBalances(false);
-  };
-
-  useEffect(() => {
-    if (activeTab === 'list' && wallets.length > 0) {
-      loadBalances();
-    }
-  }, [activeTab]);
-
   // ─── Toggle secret visibility ──────────────────────────────────────
   const toggleSecret = (id) => {
     setShowSecret(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  return (
-    <div style={{
-      background: '#FFFFFF',
-      borderRadius: '24px 24px 0 0',
-      padding: '20px 20px 24px 20px',
-      maxHeight: '85vh',
-      overflowY: 'auto'
-    }}>
+  // ─── Refresh balance ───────────────────────────────────────────────
+  const handleRefreshBalance = async (publicKey, walletId) => {
+    setLoadingBalance(prev => ({ ...prev, [walletId]: true }));
+    await refreshOnlineBalance(publicKey);
+    setLoadingBalance(prev => ({ ...prev, [walletId]: false }));
+  };
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Wallet size={18} style={{ color: '#fff' }} />
+  const wrapperStyle = embedded
+    ? { width: '100%' }
+    : {
+        background: '#FFFFFF',
+        borderRadius: '24px 24px 0 0',
+        padding: '20px 20px 24px 20px',
+        width: '100%',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      };
+
+  return (
+    <div style={wrapperStyle}>
+      {/* Header (only in modal mode) */}
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Wallet size={18} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)' }}>Mis Billeteras</h2>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{linkedWallets.length} billetera{linkedWallets.length !== 1 ? 's' : ''} vinculada{linkedWallets.length !== 1 ? 's' : ''}</p>
+            </div>
           </div>
-          <h2 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)' }}>Billeteras</h2>
+          {onClose && (
+            <button onClick={onClose} className="pollar-icon-btn"><X size={18} /></button>
+          )}
         </div>
-        {onClose && (
-          <button onClick={onClose} style={{ background: 'none', padding: 6, color: 'var(--text-light)' }}>
-            <X size={20} />
+      )}
+
+      {/* Tab Switcher */}
+      <div style={{ display: 'flex', background: '#EBF0F7', padding: 4, borderRadius: 14, gap: 4 }}>
+        {[
+          { id: 'list', label: 'Vinculadas', icon: Link2 },
+          { id: 'create', label: 'Nueva', icon: Plus },
+          { id: 'import', label: 'Importar', icon: KeyRound },
+        ].map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => { setActiveTab(id); setFeedback({ type: '', message: '' }); setCreatedWallet(null); }}
+            style={{
+              flex: 1, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: activeTab === id ? '#FFFFFF' : 'transparent',
+              color: activeTab === id ? 'var(--pollar-blue)' : 'var(--text-muted)',
+              boxShadow: activeTab === id ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+            }}
+          >
+            <Icon size={14} /> {label}
           </button>
-        )}
+        ))}
       </div>
 
-      {/* Feedback toast */}
+      {/* Feedback */}
       {feedback.message && (
         <div style={{
-          padding: '10px 14px', borderRadius: 14, fontSize: 12, fontWeight: 700,
-          marginBottom: 16,
+          padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 8,
           background: feedback.type === 'error' ? 'var(--color-rose-bg)' : 'var(--color-emerald-bg)',
           color: feedback.type === 'error' ? 'var(--color-rose)' : 'var(--color-emerald)',
-          display: 'flex', alignItems: 'center', gap: 8
         }}>
-          {feedback.type === 'error' ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+          {feedback.type === 'error' ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
           {feedback.message}
         </div>
       )}
 
-      {/* Tab bar */}
-      {activeTab !== 'create' && activeTab !== 'import' && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setActiveTab('list')} style={{
-            padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 800,
-            background: activeTab === 'list' ? 'var(--pollar-blue)' : 'var(--bg-card-muted)',
-            color: activeTab === 'list' ? '#fff' : 'var(--text-muted)',
-            border: 'none', cursor: 'pointer'
-          }}>
-            Mis billeteras ({wallets.length})
-          </button>
-          <button onClick={() => { setActiveTab('create'); setCreatedWallet(null); setNewName(''); }} style={{
-            padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 800,
-            background: activeTab === 'create' ? 'var(--pollar-blue)' : 'var(--bg-card-muted)',
-            color: activeTab === 'create' ? '#fff' : 'var(--text-muted)',
-            border: 'none', cursor: 'pointer'
-          }}>
-            <Plus size={14} style={{ display: 'inline', marginRight: 4 }} />
-            Nueva
-          </button>
-          <button onClick={() => { setActiveTab('import'); setImportInput(''); setImportName(''); }} style={{
-            padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 800,
-            background: activeTab === 'import' ? 'var(--pollar-blue)' : 'var(--bg-card-muted)',
-            color: activeTab === 'import' ? '#fff' : 'var(--text-muted)',
-            border: 'none', cursor: 'pointer'
-          }}>
-            <KeyRound size={14} style={{ display: 'inline', marginRight: 4 }} />
-            Importar
-          </button>
-        </div>
-      )}
-
-      {/* ─── LIST VIEW ──────────────────────────────────────────────── */}
+      {/* ─── LIST TAB ─── */}
       {activeTab === 'list' && (
-        <div>
-          {wallets.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-light)' }}>
-              <Wallet size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.3 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Sin billeteras registradas</p>
-              <p style={{ fontSize: 12 }}>Crea una nueva o importa una existente</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {linkedWallets.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 18, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Wallet size={28} />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-muted)' }}>No tienes billeteras vinculadas</p>
+              <button
+                onClick={() => setActiveTab('create')}
+                className="pollar-btn-primary"
+                style={{ minWidth: 180 }}
+              >
+                <Plus size={16} /> Crear primera billetera
+              </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {wallets.map(w => (
-                <div key={w.id} style={{
-                  padding: '14px 16px', borderRadius: 18,
-                  background: 'var(--bg-card-muted)',
-                  border: '1px solid var(--border-subtle)',
-                  display: 'flex', flexDirection: 'column', gap: 8
-                }}>
+            linkedWallets.map(w => {
+              const isActive = w.id === activeWalletId;
+              const bal = w.mainBalance ?? 0;
+              return (
+                <div
+                  key={w.id}
+                  style={{
+                    padding: 16, borderRadius: 20,
+                    border: isActive
+                      ? '2px solid var(--pollar-blue)'
+                      : '1.5px solid var(--border-subtle)',
+                    background: isActive ? 'var(--pollar-blue-light)' : '#FAFAFA',
+                    display: 'flex', flexDirection: 'column', gap: 12,
+                    position: 'relative',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {/* Active badge */}
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute', top: -1, right: 12,
+                      background: 'var(--pollar-blue)', color: '#fff',
+                      fontSize: 10, fontWeight: 900, padding: '3px 8px', borderRadius: '0 0 8px 8px',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      <Star size={10} fill="white" /> ACTIVA
+                    </div>
+                  )}
+
+                  {/* Wallet Header */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: 'linear-gradient(135deg, var(--pollar-blue), #7c3aed)',
+                        width: 40, height: 40, borderRadius: 14,
+                        background: isActive ? 'var(--pollar-blue)' : '#E8EDF5',
+                        color: isActive ? '#fff' : 'var(--pollar-blue)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#fff', fontSize: 14, fontWeight: 900
+                        fontSize: 14, fontWeight: 900,
                       }}>
-                        {w.name.charAt(0).toUpperCase()}
+                        {w.name.slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)' }}>{w.name}</p>
-                        <p style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                          {truncateKey(w.publicKey, 8)}
+                        <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-main)' }}>{w.name}</p>
+                        <p style={{ fontSize: 10, color: 'var(--text-light)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {w.isPollar && <span style={{ color: 'var(--pollar-blue)', fontWeight: 800 }}>Pollar</span>}
+                          {!w.isPollar && w.isReadOnly && <span style={{ color: 'var(--color-amber)', fontWeight: 800 }}>Solo lectura</span>}
+                          {!w.isPollar && !w.isReadOnly && <span style={{ color: 'var(--color-emerald)', fontWeight: 800 }}>Firmante</span>}
                         </p>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button onClick={() => copyKey(w.publicKey)} style={{
-                        padding: 6, background: 'none', color: 'var(--text-light)', border: 'none', cursor: 'pointer'
-                      }} title="Copiar clave pública">
-                        <Copy size={15} />
-                      </button>
-                      <button onClick={() => handleDelete(w.id)} style={{
-                        padding: 6, background: 'none', color: 'var(--color-rose)', border: 'none', cursor: 'pointer'
-                      }} title="Eliminar billetera">
-                        <Trash2 size={15} />
-                      </button>
+
+                    {/* Balance */}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: isActive ? 'var(--pollar-blue)' : 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+                        {bal.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{w.asset || 'XLM'}</div>
                     </div>
                   </div>
 
-                  {/* Balance */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-light)' }}>Balance on-chain</span>
-                    {loadingBalances ? (
-                      <span style={{ fontSize: 11, color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Loader2 size={11} className="animate-spin" /> consultando...
-                      </span>
-                    ) : balances[w.publicKey] !== undefined ? (
-                      <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>
-                        {balances[w.publicKey] !== null
-                          ? `${balances[w.publicKey]} XLM`
-                          : <span style={{ color: 'var(--color-rose)', fontSize: 10 }}>no hallada</span>
-                        }
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 11, color: 'var(--text-light)' }}>—</span>
-                    )}
+                  {/* Public Key */}
+                  <div
+                    onClick={() => copyKey(w.publicKey)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                      background: '#FFFFFF', borderRadius: 12, border: '1px solid var(--border-subtle)',
+                      cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)',
+                    }}
+                  >
+                    <Copy size={13} style={{ flexShrink: 0, color: 'var(--pollar-blue)' }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {w.publicKey}
+                    </span>
                   </div>
 
-                  {/* Secret key (if present, show/hide) */}
+                  {/* Secret Key (if has one) */}
                   {w.secretKey && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
-                      <span style={{ fontSize: 10, color: 'var(--text-light)' }}>Secreta:</span>
-                      <code style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', flex: 1 }}>
-                        {showSecret[w.id]
-                          ? w.secretKey
-                          : truncateKey(w.secretKey, 12)
-                        }
-                      </code>
-                      <button onClick={() => toggleSecret(w.id)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', padding: 2
-                      }}>
-                        {showSecret[w.id] ? <EyeOff size={13} /> : <Eye size={13} />}
-                      </button>
-                      <button onClick={() => copyKey(w.secretKey)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', padding: 2
-                      }} title="Copiar clave secreta">
-                        <Copy size={13} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#FFF7ED', borderRadius: 12, border: '1px solid rgba(245,158,11,0.3)' }}>
+                      <Shield size={13} style={{ flexShrink: 0, color: 'var(--color-amber)' }} />
+                      <span style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {showSecret[w.id] ? w.secretKey : '•'.repeat(32)}
+                      </span>
+                      <button onClick={() => toggleSecret(w.id)} style={{ background: 'none', color: 'var(--color-amber)', flexShrink: 0, display: 'flex' }}>
+                        {showSecret[w.id] ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
                   )}
+
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {!isActive && (
+                      <button
+                        onClick={() => selectActiveWallet(w.id)}
+                        className="pollar-btn-primary"
+                        style={{ flex: 1, padding: '10px 12px', fontSize: 12 }}
+                      >
+                        <Star size={14} /> Activar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRefreshBalance(w.publicKey, w.id)}
+                      disabled={loadingBalance[w.id]}
+                      style={{
+                        padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                        background: '#F1F5F9', border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <RefreshCw size={14} className={loadingBalance[w.id] ? 'animate-spin' : ''} />
+                      {isActive ? 'Actualizar' : ''}
+                    </button>
+                    <button
+                      onClick={() => handleUnlink(w.id, w.name)}
+                      style={{
+                        padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 700,
+                        background: 'var(--color-rose-bg)', border: '1px solid rgba(244,63,94,0.2)',
+                        color: 'var(--color-rose)', display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Unlink size={14} />
+                    </button>
+                  </div>
                 </div>
-              ))}
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* ─── CREATE TAB ─── */}
+      {activeTab === 'create' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {!createdWallet ? (
+            <>
+              <div style={{ padding: 16, borderRadius: 18, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0,98,255,0.2)' }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--pollar-blue)' }}>
+                  Se generará un par de claves Ed25519 nuevo en Stellar Testnet.
+                </p>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                  Nombre de la billetera
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="ej: Mi billetera principal"
+                  className="pollar-input"
+                  autoFocus
+                />
+              </div>
+              <button onClick={handleCreateWallet} className="pollar-btn-primary">
+                <Plus size={16} /> Generar Billetera
+              </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: 16, borderRadius: 18, background: 'var(--color-emerald-bg)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle2 size={20} color="var(--color-emerald)" />
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)' }}>¡Claves generadas!</p>
+                  <p style={{ fontSize: 11, color: '#065F46' }}>Guarda tu clave privada en un lugar seguro.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>Clave Pública (G...)</p>
+                  <div
+                    onClick={() => copyKey(createdWallet.publicKey)}
+                    style={{ padding: '10px 12px', borderRadius: 12, background: '#F8FAFC', border: '1px solid var(--border-subtle)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <Copy size={12} color="var(--pollar-blue)" />
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {createdWallet.publicKey}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-amber)', marginBottom: 4 }}>⚠️ Clave Privada (S...) — Guárdala</p>
+                  <div
+                    onClick={() => copyKey(createdWallet.secretKey)}
+                    style={{ padding: '10px 12px', borderRadius: 12, background: '#FFF7ED', border: '1px solid rgba(245,158,11,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <Copy size={12} color="var(--color-amber)" />
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#B45309', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {createdWallet.secretKey}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={handleConfirmCreatedWallet} className="pollar-btn-primary">
+                <CheckCircle2 size={16} /> Guardé mi clave — Vincular billetera
+              </button>
+              <button onClick={() => setCreatedWallet(null)} className="pollar-btn-secondary">
+                Cancelar
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ─── CREATE VIEW ────────────────────────────────────────────── */}
-      {activeTab === 'create' && !createdWallet && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{
-            padding: 16, borderRadius: 18, background: 'var(--pollar-blue-light)',
-            border: '1px solid rgba(0,98,255,0.15)', display: 'flex', gap: 12, alignItems: 'flex-start'
-          }}>
-            <Shield size={20} style={{ color: 'var(--pollar-blue)', flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', marginBottom: 4 }}>
-                Billetera Hierárquica Determinista (HD)
-              </p>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Genera un par de claves Ed25519 real en Stellar. Tu clave privada se guarda solo en este dispositivo.
-              </p>
-            </div>
+      {/* ─── IMPORT TAB ─── */}
+      {activeTab === 'import' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: 14, borderRadius: 18, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0,98,255,0.2)' }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)' }}>
+              Puedes importar con la <strong>clave secreta (S...)</strong> para firmar transacciones, 
+              o solo la <strong>clave pública (G...)</strong> para monitoreo (solo lectura).
+            </p>
           </div>
 
           <div>
@@ -333,108 +440,29 @@ export default function WalletRegistry({ onClose }) {
               Nombre de la billetera
             </label>
             <input
-              className="pollar-input"
-              placeholder="Ej: Billetera principal, Ahorros..."
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              maxLength={40}
-            />
-          </div>
-
-          <button onClick={handleCreateWallet} className="pollar-btn-primary">
-            <Plus size={16} style={{ display: 'inline', marginRight: 6 }} />
-            Generar nuevo par de claves
-          </button>
-
-          <button onClick={() => setActiveTab('list')} style={{ background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 12, cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </div>
-      )}
-
-      {activeTab === 'create' && createdWallet && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{
-            padding: 14, borderRadius: 18, background: 'var(--color-emerald-bg)',
-            border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center'
-          }}>
-            <CheckCircle2 size={32} style={{ color: 'var(--color-emerald)', margin: '0 auto 8px', display: 'block' }} />
-            <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-emerald)' }}>Billetera generada</p>
-          </div>
-
-          <div style={{ padding: 14, borderRadius: 16, background: 'var(--bg-card-muted)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-light)' }}>NOMBRE</span>
-              <p style={{ fontSize: 13, fontWeight: 800 }}>{createdWallet.name}</p>
-            </div>
-            <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-light)' }}>CLAVE PÚBLICA</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <code style={{ fontSize: 10, fontFamily: 'var(--font-mono)', wordBreak: 'break-all', flex: 1 }}>{createdWallet.publicKey}</code>
-                <button onClick={() => copyKey(createdWallet.publicKey)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
-                  <Copy size={14} />
-                </button>
-              </div>
-            </div>
-            <div style={{
-              padding: 12, borderRadius: 12, background: 'rgba(244,63,94,0.08)',
-              border: '1px solid rgba(244,63,94,0.2)'
-            }}>
-              <span style={{ fontSize: 10, fontWeight: 900, color: 'var(--color-rose)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
-                <AlertCircle size={12} /> CLAVE SECRETA — NUNCA LA COMPARTAS
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <code style={{ fontSize: 10, fontFamily: 'var(--font-mono)', wordBreak: 'break-all', flex: 1 }}>{createdWallet.secretKey}</code>
-                <button onClick={() => copyKey(createdWallet.secretKey)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-rose)' }}>
-                  <Copy size={14} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <button onClick={handleConfirmCreatedWallet} className="pollar-btn-primary">
-            <CheckCircle2 size={16} style={{ display: 'inline', marginRight: 6 }} />
-            Guardar billetera
-          </button>
-        </div>
-      )}
-
-      {/* ─── IMPORT VIEW ────────────────────────────────────────────── */}
-      {activeTab === 'import' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-              Clave Stellar (S... o G...)
-            </label>
-            <input
-              className="pollar-input"
-              placeholder="SA... o GA..."
-              value={importInput}
-              onChange={e => setImportInput(e.target.value)}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}
-            />
-          </div>
-
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-              Nombre para esta billetera
-            </label>
-            <input
-              className="pollar-input"
-              placeholder="Ej: Mi billetera fría, Backup..."
+              type="text"
               value={importName}
               onChange={e => setImportName(e.target.value)}
-              maxLength={40}
+              placeholder="ej: Mi wallet Stellar"
+              className="pollar-input"
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+              Clave Stellar (G... o S...)
+            </label>
+            <textarea
+              value={importInput}
+              onChange={e => setImportInput(e.target.value)}
+              placeholder="Pega tu clave pública (G...) o secreta (S...)"
+              className="pollar-input"
+              style={{ resize: 'none', fontFamily: 'var(--font-mono)', fontSize: 11, height: 80 }}
             />
           </div>
 
           <button onClick={handleImport} className="pollar-btn-primary">
-            <KeyRound size={16} style={{ display: 'inline', marginRight: 6 }} />
-            Importar billetera
-          </button>
-
-          <button onClick={() => setActiveTab('list')} style={{ background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 12, cursor: 'pointer' }}>
-            Cancelar
+            <Link2 size={16} /> Vincular Billetera
           </button>
         </div>
       )}

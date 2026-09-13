@@ -4,4 +4,5 @@ VITE_POLLAR_GATEWAY_URL=https://api.pollar.io/v1
 VITE_STELLAR_NETWORK=testnet
 VITE_HORIZON_URL=https://horizon-testnet.stellar.org
 VITE_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+VITE_POLLAR_PUBLISHABLE_KEY=pub_testnet_2586cc5061cc4250e34cc3e19a47fb53
 

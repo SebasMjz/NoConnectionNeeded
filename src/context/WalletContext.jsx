@@ -164,20 +164,39 @@ export function WalletProvider({ children }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWallet?.publicKey, effectiveOnline]);
 
-  // ─── Wallet Management ──────────────────────────────────────────────
-
   /**
    * Link a new wallet to the user's account.
-   * @param {object} walletData - { publicKey, secretKey?, name, isReadOnly? }
+   * @param {object} walletData - { publicKey, secretKey?, name, isReadOnly?, isPollar?, provider?, custody? }
+   * @param {boolean} makeActive - whether to immediately set this wallet as the active one
    */
-  const linkWallet = (walletData) => {
-    const id = 'w_' + walletData.publicKey.slice(0, 8) + '_' + Date.now().toString(36);
+  const linkWallet = (walletData, makeActive = false) => {
+    // Si ya existe una billetera vinculada con esta clave pública, reutilizarla
+    const existing = linkedWallets.find(w => w.publicKey === walletData.publicKey);
+    if (existing) {
+      if (makeActive || !activeWalletId) {
+        setActiveWalletId(existing.id);
+      }
+      updateWallet(existing.id, {
+        name: walletData.name || existing.name,
+        isReadOnly: walletData.isReadOnly ?? existing.isReadOnly,
+        isPollar: walletData.isPollar ?? existing.isPollar,
+        provider: walletData.provider || existing.provider,
+        custody: walletData.custody || existing.custody,
+      });
+      refreshOnlineBalance(existing.publicKey);
+      return existing;
+    }
+
+    const id = (walletData.isPollar ? 'w_pollar_' : 'w_') + walletData.publicKey.slice(0, 8) + '_' + Date.now().toString(36);
     const newWallet = {
       id,
-      name: walletData.name || 'Billetera Vinculada',
+      name: walletData.name || (walletData.isPollar ? 'Billetera Pollar' : 'Billetera Vinculada'),
       publicKey: walletData.publicKey,
       secretKey: walletData.secretKey || null,
-      isReadOnly: walletData.isReadOnly || !walletData.secretKey,
+      isReadOnly: walletData.isReadOnly ?? !walletData.secretKey,
+      isPollar: !!walletData.isPollar,
+      provider: walletData.provider || null,
+      custody: walletData.custody || null,
       asset: 'XLM',
       mainBalance: 0.0,
       derivedOffline: 0.0,
@@ -189,11 +208,13 @@ export function WalletProvider({ children }) {
       createdAt: Date.now(),
     };
     setLinkedWallets(prev => {
-      const updated = [newWallet, ...prev];
-      if (!activeWalletId) setActiveWalletId(newWallet.id);
-      return updated;
+      const filtered = prev.filter(w => w.publicKey !== newWallet.publicKey);
+      return [newWallet, ...filtered];
     });
-    if (!activeWalletId) setActiveWalletId(newWallet.id);
+    if (makeActive || !activeWalletId) {
+      setActiveWalletId(newWallet.id);
+    }
+    refreshOnlineBalance(newWallet.publicKey);
     return newWallet;
   };
 

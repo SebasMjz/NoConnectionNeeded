@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { WalletProvider, useWallet } from './context/WalletContext';
+import { PollarProvider, usePollar } from '@pollar/react';
+import '@pollar/react/styles.css';
 import AuthGateway from './components/AuthGateway';
 import PollarLogo from './components/PollarLogo';
 import WalletVault from './components/WalletVault';
@@ -18,6 +20,120 @@ import {
   WifiOff,
 } from 'lucide-react';
 
+// ─── Pollar SDK config ──────────────────────────────────────────────────────
+const POLLAR_PUBLISHABLE_KEY =
+  import.meta.env.VITE_POLLAR_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_POLLAR_API_KEY ||
+  'pub_testnet_2586cc5061cc4250e34cc3e19a47fb53';
+
+const POLLAR_APP_CONFIG = {
+  application: {
+    name: 'Pollar Pay',
+    network: 'testnet',
+    chains: ['stellar'],
+  },
+  styles: {
+    theme: 'light',
+    accentColor: '#0062FF',
+    emailEnabled: true,
+    embeddedWallets: true,
+    smartWallet: false,
+    providers: {
+      google: true,
+    },
+  },
+};
+
+// ─── PollarAuthBridge ───────────────────────────────────────────────────────
+// Syncs Pollar SDK auth state into our WalletContext so the rest of
+// the app (Bóveda, Terminal P2P, Sync) doesn't need to know about Pollar.
+function PollarAuthBridge({ children }) {
+  const pollar = usePollar();
+  const { currentUser, loginWithOAuth, logout, linkWallet } = useWallet();
+
+  useEffect(() => {
+    const { isAuthenticated, wallet, wallets, getClient } = pollar;
+
+    if (isAuthenticated) {
+      const client = typeof getClient === 'function' ? getClient() : null;
+      const clientWallet = client && typeof client.getWallet === 'function' ? client.getWallet() : null;
+      let address = wallet?.address ||
+                    clientWallet?.address ||
+                    wallets?.[0]?.address ||
+                    client?._session?.wallet?.address || null;
+
+      // Intentar obtener el perfil del usuario autenticado en Pollar
+      let profile = null;
+      try {
+        if (client && typeof client.getUserProfile === 'function') {
+          profile = client.getUserProfile();
+        }
+      } catch (e) {
+        console.warn('Error fetching Pollar profile:', e);
+      }
+
+      const email = profile?.mail || profile?.email || null;
+      const firstName = profile?.first_name || '';
+      const lastName = profile?.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      const displayName = fullName || (email ? email.split('@')[0] : (address ? `Pollar (${address.slice(0, 4)}...${address.slice(-4)})` : 'Usuario Pollar'));
+      const provider = wallet?.provider || 'pollar';
+      const avatar = profile?.avatar || null;
+
+      // 1. Sincronizar el usuario en WalletContext inmediatamente para que esté autenticado
+      if (!currentUser || (address && currentUser.pollarId !== address)) {
+        loginWithOAuth({
+          email,
+          name: displayName,
+          provider,
+          avatar,
+          pollarId: address || 'pollar_session',
+        });
+      }
+
+      // 2. Si no hay address aún, intentar crearla / solicitarla a Pollar SDK
+      if (!address && client && typeof client.createAccount === 'function') {
+        client.createAccount().then((res) => {
+          const newAddress = client.getWallet()?.address || res?.wallet?.address;
+          if (newAddress) {
+            linkWallet({
+              publicKey: newAddress,
+              secretKey: null,
+              name: 'Billetera Pollar',
+              isReadOnly: true,
+              isPollar: true,
+              provider: 'pollar',
+              custody: 'internal',
+            }, true);
+          }
+        }).catch(err => {
+          console.warn('Error creating account on Pollar:', err);
+        });
+      }
+
+      // 3. Vincular y seleccionar automáticamente la wallet asignada por Pollar como la billetera activa
+      if (address) {
+        linkWallet({
+          publicKey: address,
+          secretKey: null, // Pollar administra la custodia y firma de la clave
+          name: 'Billetera Pollar',
+          isReadOnly: true,
+          isPollar: true,
+          provider: wallet?.provider || 'pollar',
+          custody: wallet?.custody || 'internal',
+        }, true); // makeActive = true
+      }
+    }
+
+    if (!isAuthenticated && currentUser?.provider === 'pollar') {
+      logout();
+    }
+  }, [pollar.isAuthenticated, pollar.wallet?.address, pollar.wallets]);
+
+  return children;
+}
+
+// ─── AppContent ─────────────────────────────────────────────────────────────
 function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -35,19 +151,51 @@ function AppContent() {
     activeWallet,
   } = useWallet();
 
-  // If user is not authenticated, show the Login Gateway
-  if (!currentUser) {
+  // Watch Pollar SDK auth state - if authenticated in Pollar or WalletContext, user enters the app
+  const pollar = usePollar();
+  const isPollarAuthenticated = pollar.isAuthenticated;
+
+  // Show AuthGateway if neither WalletContext nor Pollar has a session
+  const isAuthenticated = !!currentUser || isPollarAuthenticated;
+
+  if (!isAuthenticated) {
     return <AuthGateway onLoginSuccess={() => setActiveTab('home')} />;
   }
 
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
 
+  // Effective user: prefer WalletContext (mirrors Pollar) but fall back to Pollar directly
+  let profile = null;
+  try {
+    profile = pollar.getClient?.()?.getUserProfile?.();
+  } catch (e) {}
+
+  const pollarName = profile?.first_name
+    ? `${profile.first_name} ${profile.last_name || ''}`.trim()
+    : profile?.mail
+      ? profile.mail.split('@')[0]
+      : pollar.wallet?.address
+        ? `Pollar (${pollar.wallet.address.slice(0, 4)}...${pollar.wallet.address.slice(-4)})`
+        : 'Usuario';
+
+  const displayUser = currentUser || (pollar.wallet ? {
+    name: pollarName,
+    email: profile?.mail || null,
+    avatar: profile?.avatar || null,
+    provider: pollar.wallet.provider || 'pollar',
+  } : null);
+
   const tabs = [
-    { id: 'home',    label: 'Bóveda',      icon: Wallet },
-    { id: 'send',    label: 'Transferir',   icon: Send },
-    { id: 'sync',    label: 'Sincronizar',  icon: RefreshCw },
-    { id: 'wallets', label: 'Mis Wallets',  icon: Wallet },
+    { id: 'home',    label: 'Bóveda',     icon: Wallet },
+    { id: 'send',    label: 'Transferir',  icon: Send },
+    { id: 'sync',    label: 'Sincronizar', icon: RefreshCw },
+    { id: 'wallets', label: 'Mis Wallets', icon: Wallet },
   ];
+
+  const handleLogout = () => {
+    logout();
+    if (isPollarAuthenticated) pollar.logout?.();
+  };
 
   return (
     <div className="pollar-app-shell">
@@ -55,32 +203,19 @@ function AppContent() {
       {/* Top Header */}
       <header className="pollar-header">
         <div className="pollar-user-pill">
-          {/* Avatar */}
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              background: currentUser.avatar ? 'transparent' : 'linear-gradient(135deg, #0062FF, #7c3aed)',
-              border: '1.5px solid rgba(0, 98, 255, 0.18)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              boxShadow: '0 2px 8px rgba(0, 98, 255, 0.1)',
-              overflow: 'hidden',
-            }}
-          >
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt="Avatar"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={e => { e.target.style.display = 'none'; }}
-              />
+          <div style={{
+            width: 42, height: 42, borderRadius: 14,
+            background: displayUser?.avatar ? 'transparent' : 'linear-gradient(135deg, #0062FF, #7c3aed)',
+            border: '1.5px solid rgba(0,98,255,0.18)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,98,255,0.1)',
+          }}>
+            {displayUser?.avatar ? (
+              <img src={displayUser.avatar} alt="Avatar"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <span style={{ fontSize: 16, fontWeight: 900, color: '#fff' }}>
-                {(currentUser.name || 'U').charAt(0).toUpperCase()}
+                {(displayUser?.name || 'U').charAt(0).toUpperCase()}
               </span>
             )}
           </div>
@@ -89,9 +224,9 @@ function AppContent() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Hola,</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentUser.name || 'Usuario'}
+                {displayUser?.name || 'Usuario'}
               </span>
-              {currentUser.provider === 'google' && (
+              {(displayUser?.provider === 'google' || displayUser?.provider === 'pollar') && (
                 <svg width="12" height="12" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -115,23 +250,14 @@ function AppContent() {
           <button
             onClick={() => setIsSimulatingOffline(!isSimulatingOffline)}
             className={`pollar-status-badge ${isOnline ? 'online' : 'offline'}`}
-            title={isOnline ? 'Conectado (Click para simular Offline)' : 'Modo Offline (Click para reconectar)'}
           >
             {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </button>
-
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="pollar-icon-btn"
-            title="Configuración y Perfil"
-          >
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt="Avatar"
-                style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover' }}
-              />
+          <button onClick={() => setIsSettingsOpen(true)} className="pollar-icon-btn">
+            {displayUser?.avatar ? (
+              <img src={displayUser.avatar} alt="Avatar"
+                style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover' }} />
             ) : (
               <Settings size={18} />
             )}
@@ -154,7 +280,6 @@ function AppContent() {
             <WalletRegistry onClose={null} embedded={true} />
           </div>
         )}
-
         <div style={{ height: 60, width: '100%', flexShrink: 0 }} />
       </main>
 
@@ -167,11 +292,8 @@ function AppContent() {
               onClick={() => setActiveTab(id)}
               className={`pollar-nav-tab ${activeTab === id ? (id === 'sync' ? 'active sync-tab' : 'active') : ''}`}
             >
-              <div className="pollar-nav-tab-icon-wrap">
-                <Icon size={20} />
-              </div>
+              <div className="pollar-nav-tab-icon-wrap"><Icon size={20} /></div>
               <span className="pollar-nav-tab-label">{label}</span>
-
               {id === 'sync' && pendingCount > 0 && (
                 <span className="pollar-nav-badge">{pendingCount}</span>
               )}
@@ -186,6 +308,7 @@ function AppContent() {
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
             <SettingsView
               onClose={() => setIsSettingsOpen(false)}
+              onLogout={handleLogout}
               onNavigateRegistry={() => { setIsSettingsOpen(false); setIsWalletRegistryOpen(true); }}
             />
           </div>
@@ -219,10 +342,21 @@ function AppContent() {
   );
 }
 
+// ─── Root App ────────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <WalletProvider>
-      <AppContent />
-    </WalletProvider>
+    <PollarProvider
+      client={{
+        apiKey: POLLAR_PUBLISHABLE_KEY,
+        stellarNetwork: 'testnet',
+      }}
+      appConfig={POLLAR_APP_CONFIG}
+    >
+      <WalletProvider>
+        <PollarAuthBridge>
+          <AppContent />
+        </PollarAuthBridge>
+      </WalletProvider>
+    </PollarProvider>
   );
 }

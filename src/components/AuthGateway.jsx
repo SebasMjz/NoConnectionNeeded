@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
 import PollarLogo from './PollarLogo';
 import WalletConnectModal from './WalletConnectModal';
-import OAuthModal from './OAuthModal';
+import { Capacitor } from '@capacitor/core';
+import GoogleAuthService from '../services/GoogleAuthService';
+import { usePollar } from '@pollar/react';
 import {
   Mail,
   Wallet,
@@ -30,6 +32,7 @@ export default function AuthGateway({ onLoginSuccess }) {
     settings,
   } = useWallet();
 
+  const pollar = usePollar();
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,8 +40,38 @@ export default function AuthGateway({ onLoginSuccess }) {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState('input'); // 'input' | 'biometric'
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
-  const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
   const [feedback, setFeedback] = useState({ type: '', message: '' });
+
+  // ─── Auto-redirect when Pollar login succeeds ───────────────────────
+  React.useEffect(() => {
+    if (pollar.isAuthenticated) {
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
+    }
+  }, [pollar.isAuthenticated, onLoginSuccess]);
+
+  // ─── Google Sign-In (native Android OR real Pollar OAuth) ─────────────
+  const handleGoogleButtonClick = async () => {
+    setIsLoading(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // → Native Android: launch real Google account picker
+        const profile = await GoogleAuthService.signIn();
+        if (profile) {
+          handleOAuthSuccess(profile);
+        }
+      } else {
+        // → Web: real Google login via Pollar SDK
+        await pollar.login({ provider: 'google' });
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: err?.message || 'Error al autenticar con Google' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // ─── OAuth ──────────────────────────────────────────────────────────
   const handleOAuthSuccess = (profile) => {
@@ -137,11 +170,66 @@ export default function AuthGateway({ onLoginSuccess }) {
           </p>
         </div>
 
+        {/* ─── POLLAR SDK — Primary CTA ─── */}
+        {step === 'input' && (
+          <button
+            id="btn-pollar-sdk-login"
+            onClick={async () => {
+              try {
+                setIsLoading(true);
+                setFeedback({ type: '', message: '' });
+                if (typeof pollar.openLoginModal === 'function') {
+                  pollar.openLoginModal();
+                } else {
+                  await pollar.login();
+                }
+              } catch (err) {
+                setFeedback({ type: 'error', message: err?.message || 'Error al conectar con Pollar' });
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={isLoading}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              padding: '15px 20px',
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #0062FF 0%, #5B3FE8 100%)',
+              border: 'none',
+              boxShadow: '0 4px 16px rgba(0,98,255,0.28)',
+              fontSize: 14,
+              fontWeight: 900,
+              color: '#fff',
+              cursor: 'pointer',
+              letterSpacing: '-0.2px',
+              transition: 'all 0.18s ease',
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <PollarLogo size={20} showText={false} />
+            {isLoading ? 'Conectando...' : 'Continuar con Pollar'}
+          </button>
+        )}
+
+        {/* Divider between Pollar SDK and other methods */}
+        {step === 'input' && (
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ flexGrow: 1, height: 1, background: '#E2E8F0' }} />
+            <span style={{ padding: '0 12px', fontSize: 11, color: 'var(--text-light)', fontWeight: 500 }}>o continúa con</span>
+            <div style={{ flexGrow: 1, height: 1, background: '#E2E8F0' }} />
+          </div>
+        )}
+
         {/* ─── PRIMARY: Google OAuth Button ─── */}
         {step === 'input' && (
           <button
             id="btn-google-oauth"
-            onClick={() => setIsOAuthModalOpen(true)}
+            onClick={handleGoogleButtonClick}
             style={{
               width: '100%',
               display: 'flex',
@@ -377,13 +465,6 @@ export default function AuthGateway({ onLoginSuccess }) {
         isOpen={isWalletModalOpen}
         onClose={() => setIsWalletModalOpen(false)}
         onConnected={handleWalletLoginComplete}
-      />
-
-      {/* Google OAuth Modal */}
-      <OAuthModal
-        isOpen={isOAuthModalOpen}
-        onClose={() => setIsOAuthModalOpen(false)}
-        onSuccess={handleOAuthSuccess}
       />
     </div>
   );
