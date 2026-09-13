@@ -1,22 +1,16 @@
 import React from 'react';
 import { useWallet } from '../context/WalletContext';
-import { Settings, Copy, Check, ExternalLink } from 'lucide-react';
+import { Settings, Copy, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Header({ onSettings }) {
-  const { wallet, activeEvmChain, switchEvmChain } = useWallet();
+  const { activeWallet, isOnline } = useWallet();
   const [copied, setCopied] = useState(false);
 
   const copyAddress = () => {
-    navigator.clipboard.writeText(wallet?.address || '');
+    navigator.clipboard.writeText(activeWallet?.publicKey || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const chainNames = {
-    sepolia: 'Sepolia',
-    hskTestnet: 'HSK Testnet',
-    baseSepolia: 'Base Sepolia'
   };
 
   return (
@@ -27,13 +21,9 @@ export default function Header({ onSettings }) {
       </div>
 
       <div className="hsk-header-actions">
-        <button className="hsk-chain-badge" onClick={() => {
-          const chains = ['hskTestnet', 'sepolia', 'baseSepolia'];
-          const idx = chains.indexOf(activeEvmChain);
-          switchEvmChain(chains[(idx + 1) % chains.length]);
-        }}>
-          <div className="hsk-chain-dot" />
-          <span>{chainNames[activeEvmChain] || 'HSK'}</span>
+        <button className="hsk-chain-badge">
+          <div className="hsk-chain-dot" style={{ background: isOnline ? '#10B981' : '#EF4444' }} />
+          <span>{isOnline ? 'Online' : 'Offline'}</span>
         </button>
 
         <button className="hsk-icon-btn" onClick={onSettings}>
