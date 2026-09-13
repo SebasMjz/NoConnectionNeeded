@@ -927,23 +927,178 @@ button {
   animation: pollar-nfc-radiate 1.8s infinite cubic-bezier(0.4, 0, 0.6, 1);
 }
 
-/* Bluetooth Pulse Animation */
-@keyframes pollar-ble-pulse {
+/* ==========================================
+   WALLET BALANCE RELOADING ANIMATIONS
+   ========================================== */
+@keyframes pollar-card-reloading-glow {
   0% {
-    transform: scale(0.92);
-    box-shadow: 0 0 0 0 rgba(0, 98, 255, 0.7);
+    box-shadow: 0 10px 25px -5px rgba(0, 98, 255, 0.3), 0 0 0 0 rgba(0, 98, 255, 0.5);
   }
-  65% {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 24px rgba(0, 98, 255, 0);
+  50% {
+    box-shadow: 0 15px 35px -5px rgba(0, 98, 255, 0.5), 0 0 0 8px rgba(0, 98, 255, 0.15);
   }
   100% {
-    transform: scale(0.92);
-    box-shadow: 0 0 0 0 rgba(0, 98, 255, 0);
+    box-shadow: 0 10px 25px -5px rgba(0, 98, 255, 0.3), 0 0 0 0 rgba(0, 98, 255, 0.5);
   }
 }
 
-.pollar-ble-pulse {
-  animation: pollar-ble-pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+@keyframes pollar-shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
 }
 
+.pollar-balance-card.reloading-balance {
+  animation: pollar-card-reloading-glow 1.5s infinite ease-in-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.pollar-balance-card.reloading-balance::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-20deg);
+  animation: pollar-shimmer-sweep 1.4s infinite ease-in-out;
+  pointer-events: none;
+}
+
+/* ==========================================
+   NFC PAYMENT CONFIRMATION MODAL & CHECKMARK
+   ========================================== */
+@keyframes pollar-modal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pollar-success-ripple {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes pollar-check-stroke {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pollar-check-scale {
+  0%, 100% {
+    transform: none;
+  }
+  50% {
+    transform: scale3d(1.15, 1.15, 1);
+  }
+}
+
+.pollar-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justifyContent: center;
+  padding: 20px;
+}
+
+.pollar-confirm-modal {
+  width: 100%;
+  max-width: 380px;
+  background: #FFFFFF;
+  border-radius: 28px;
+  padding: 32px 24px 24px 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: pollar-modal-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+  overflow: hidden;
+}
+
+.pollar-check-circle-wrap {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pollar-check-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.3);
+  animation: pollar-success-ripple 1.8s infinite cubic-bezier(0, 0.2, 0.8, 1);
+}
+
+.pollar-check-svg {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 3.5;
+  stroke: #10B981;
+  stroke-miterlimit: 10;
+  box-shadow: inset 0px 0px 0px #10B981;
+  animation: pollar-check-scale 0.4s ease-in-out 0.4s both;
+}
+
+.pollar-check-svg-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-width: 3.5;
+  stroke-miterlimit: 10;
+  stroke: #10B981;
+  fill: rgba(16, 185, 129, 0.1);
+  animation: pollar-check-stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.pollar-check-svg-path {
+  transform-origin: 50% 50%;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: pollar-check-stroke 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.6s forwards;
+}
+
+@keyframes pollar-progress-timer {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.pollar-countdown-bar {
+  height: 4px;
+  background: linear-gradient(90deg, #10B981, #0062FF);
+  border-radius: 2px;
+  animation: pollar-progress-timer 2.2s linear forwards;
+}

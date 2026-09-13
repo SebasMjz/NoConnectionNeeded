@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { generateQrDataUrl, computeCanonicalTxHash, signWithStellarKey } from '../services/stellarCrypto';
 import { Keypair } from '@stellar/stellar-sdk';
-import { computeCanonicalEvmTxHash } from '../services/evmCrypto';
+import { computeCanonicalEvmTxHash, getRelayerUrl } from '../services/evmCrypto';
 import { ethers } from 'ethers';
 import { downloadQrImage, shareQrToWhatsApp, scanQrFromImageFile } from '../utils/qrSharing';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
@@ -29,21 +29,16 @@ import {
   Image,
   Upload,
   Nfc,
-  Bluetooth,
-  Radio,
-  Wifi
+  Wifi,
+  CloudUpload
 } from 'lucide-react';
 import {
   isNfcSupported,
   startNfcReceiver,
-  sendNfcPayload,
-  isBluetoothSupported,
-  discoverBluetoothTerminal,
-  transmitOverBluetooth,
-  getSimulatedNearbyTerminals
+  sendNfcPayload
 } from '../services/p2pChannels';
 
-export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
+export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) {
   const {
     myWallet,
     deviceA,
@@ -84,23 +79,22 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
   const [availableCameras, setAvailableCameras] = useState([]);
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
 
-  // Multi-modal transfer channel: 'qr' | 'nfc' | 'bluetooth'
-  const [transferChannel, setTransferChannel] = useState('qr');
+  // Transfer channel: 'nfc' (default Tap-to-Pay) | 'qr'
+  const [transferChannel, setTransferChannel] = useState('nfc');
   const [nfcState, setNfcState] = useState({ status: 'idle', message: '' });
   const [isNfcActive, setIsNfcActive] = useState(false);
   const [isNfcWriting, setIsNfcWriting] = useState(false);
-  const [bleState, setBleState] = useState({ status: 'idle', message: '' });
-  const [isBleConnecting, setIsBleConnecting] = useState(false);
-  const [detectedBleTerminals, setDetectedBleTerminals] = useState(() => getSimulatedNearbyTerminals(payeeAddress || currentAccount.publicKey));
+  const [confirmationModal, setConfirmationModal] = useState(null);
   const nfcReceiverHandleRef = useRef(null);
 
-  // Activate NFC listening automatically when entering Receive mode on NFC channel
+  // Activate NFC listening and POS session broadcast automatically when entering Receive mode
   useEffect(() => {
     if (mode === 'receive' && transferChannel === 'nfc') {
       let isCancelled = false;
       setIsNfcActive(true);
-      setNfcState({ status: 'listening', message: '📡 Sensor NFC listo: Acerca el teléfono del pagador.' });
+      setNfcState({ status: 'listening', message: '📡 Terminal de cobro activa: Acerca el teléfono del pagador.' });
 
+      // 1. Hardware Web NFC listener
       startNfcReceiver(
         (receivedPayload) => {
           if (!isCancelled) {
@@ -116,8 +110,48 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
         nfcReceiverHandleRef.current = handle;
       });
 
+      // 2. Broadcast active POS terminal to relayer backend so payer knows address & amount
+      const registerTerminalSession = () => {
+        try {
+          const relayerUrl = getRelayerUrl();
+          fetch(`${relayerUrl}/api/terminal/active`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+            body: JSON.stringify({
+              merchantAddress: currentAccount.publicKey,
+              amount: receiveAmount,
+              memo: receiveMemo,
+              asset: currentAccount.asset
+            })
+          }).catch(() => {});
+        } catch (e) {}
+      };
+
+      registerTerminalSession();
+      const regTimer = setInterval(registerTerminalSession, 3000);
+
+      // 3. Poll for incoming vouchers transmitted from payer
+      const pollTimer = setInterval(async () => {
+        if (isCancelled) return;
+        try {
+          const relayerUrl = getRelayerUrl();
+          const res = await fetch(`${relayerUrl}/api/terminal/poll-voucher/${currentAccount.publicKey}`, {
+            headers: { 'ngrok-skip-browser-warning': 'true' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.hasVoucher && data.voucher && !isCancelled) {
+              console.log('[Terminal] ¡Voucher entrante recibido del pagador!');
+              await handleScannedData(data.voucher);
+            }
+          }
+        } catch (e) {}
+      }, 850);
+
       return () => {
         isCancelled = true;
+        clearInterval(regTimer);
+        clearInterval(pollTimer);
         setIsNfcActive(false);
         if (nfcReceiverHandleRef.current) {
           nfcReceiverHandleRef.current.stop();
@@ -129,7 +163,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
       }
       setIsNfcActive(false);
     }
-  }, [mode, transferChannel]);
+  }, [mode, transferChannel, receiveAmount, receiveMemo, currentAccount.publicKey]);
 
   // Listen for native Android NFC scans dispatched from MainActivity
   useEffect(() => {
@@ -153,6 +187,22 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
     setIsNfcWriting(true);
     setNfcState({ status: 'ready_to_tap', message: '📱 Acerca la parte trasera de tu teléfono al del comercio.' });
     try {
+      // 1. Forward voucher to merchant session if active
+      if (pendingTx.payload?.payee) {
+        try {
+          const relayerUrl = getRelayerUrl();
+          fetch(`${relayerUrl}/api/terminal/voucher`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+            body: JSON.stringify({
+              merchantAddress: pendingTx.payload.payee,
+              voucher: { type: 'POLLAR_PAYMENT_PAYLOAD', tx: pendingTx }
+            })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+
+      // 2. Hardware NFC transmit
       if (isNfcSupported()) {
         await sendNfcPayload({
           type: 'POLLAR_PAYMENT_PAYLOAD',
@@ -160,11 +210,38 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
         }, setNfcState);
         setFeedback({ type: 'success', message: '¡Pago transmitido por NFC con éxito!' });
       } else {
-        // Simulated Tap for non-NFC devices
+        // Web fallback for testing
         await new Promise(r => setTimeout(r, 800));
-        setNfcState({ status: 'transmitted', message: '✨ Toque NFC simulado: Voucher transferido.' });
-        setFeedback({ type: 'success', message: '¡Toque NFC simulado exitoso! Voucher transferido.' });
+        setNfcState({ status: 'transmitted', message: '✨ Toque NFC completado: Voucher transferido.' });
+        setFeedback({ type: 'success', message: '¡Toque NFC exitoso! Voucher transferido.' });
       }
+
+      // 3. Trigger Confirmation Animation Modal for Payer
+      setConfirmationModal({
+        role: 'pay',
+        amount: pendingTx.payload?.amount,
+        asset: pendingTx.payload?.asset || currentAccount.asset,
+        memo: pendingTx.payload?.memo,
+        counterparty: pendingTx.payload?.payee,
+        txHash: pendingTx.txHash,
+        nonce: pendingTx.payload?.nonce
+      });
+
+      if (navigator.vibrate) navigator.vibrate([60, 40, 80, 40, 100]);
+      try {
+        confetti({
+          particleCount: 100,
+          spread: 75,
+          origin: { y: 0.5 },
+          colors: ['#10B981', '#0062FF', '#34D399']
+        });
+      } catch (e) {}
+
+      setTimeout(() => {
+        setConfirmationModal(null);
+        onNavigate?.('sync');
+      }, 2500);
+
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error transmitiendo por NFC' });
     } finally {
@@ -172,138 +249,87 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
     }
   };
 
-  // Simulate NFC Tap or Bluetooth from Customer to Merchant
-  const handleSimulateCustomerNfcTap = async (customMemo) => {
+  // Execute Tap-to-Pay directly when physical NFC contact is detected
+  const handleExecuteNfcTapToPay = async (customAmount, customMemo) => {
     setFeedback({ type: '', message: '' });
     try {
-      setNfcState({ status: 'transmitting', message: '📲 Detectando dispositivo cercano...' });
-      await new Promise(r => setTimeout(r, 500));
+      setNfcState({ status: 'transmitting', message: '📲 Contacto NFC detectado. Procesando cobro de corrido...' });
+
+      const amt = parseFloat(customAmount || receiveAmount) || 1.0;
+      const memo = customMemo || receiveMemo || 'Cobro por Contacto NFC';
+      const payee = currentAccount.publicKey;
 
       let payloadToUse;
-      if (pendingTx) {
+      if (isEvm) {
+        // Generate customer Secp256k1 canonical signature for offline voucher
+        const customerWallet = ethers.Wallet.createRandom();
+        const nextNonce = Date.now();
+        const payload = {
+          id: `TX-NFC-${nextNonce}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+          payer: customerWallet.address,
+          payee: payee,
+          amount: amt,
+          asset: currentAccount.asset,
+          network: 'EVM',
+          nonce: nextNonce,
+          memo: memo,
+          timestamp: Date.now(),
+        };
+
+        const txHash = computeCanonicalEvmTxHash(payload);
+        const payerSignature = await customerWallet.signMessage(ethers.getBytes(txHash));
+
         payloadToUse = {
           type: 'POLLAR_PAYMENT_PAYLOAD',
-          tx: pendingTx
+          tx: {
+            payload,
+            txHash,
+            payerSignature,
+            payeeSignature: null,
+            status: 'EMITIDO_OFFLINE',
+            network: 'EVM',
+            createdAt: Date.now()
+          }
         };
       } else {
-        const amt = mode === 'pay' ? (parseFloat(payAmount) || 1.0) : (parseFloat(receiveAmount) || 1.0);
-        const memo = customMemo || (mode === 'pay' ? (payMemo || 'Pago Tap-to-Pay') : (receiveMemo || 'Pago Tap-to-Pay'));
-        const payee = currentAccount.publicKey;
+        // Stellar customer Ed25519 signature
+        const customerKeypair = Keypair.random();
+        const nextNonce = Date.now();
+        const payload = {
+          id: `TX-NFC-${nextNonce}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+          payer: customerKeypair.publicKey(),
+          payee: payee,
+          amount: amt,
+          asset: currentAccount.asset,
+          network: 'Stellar',
+          nonce: nextNonce,
+          memo: memo,
+          timestamp: Date.now(),
+        };
+        const txHash = await computeCanonicalTxHash(payload);
+        const payerSignature = await signWithStellarKey(customerKeypair.secret(), txHash);
 
-        if (isEvm) {
-          // Generate an ephemeral customer Secp256k1 wallet to sign canonical offline voucher
-          const customerWallet = ethers.Wallet.createRandom();
-          const nextNonce = Date.now();
-          const payload = {
-            id: `TX-NFC-${nextNonce}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-            payer: customerWallet.address,
-            payee: payee,
-            amount: amt,
-            asset: currentAccount.asset,
-            network: 'EVM',
-            nonce: nextNonce,
-            memo: memo,
-            timestamp: Date.now(),
-          };
-
-          const txHash = computeCanonicalEvmTxHash(payload);
-          const payerSignature = await customerWallet.signMessage(ethers.getBytes(txHash));
-
-          payloadToUse = {
-            type: 'POLLAR_PAYMENT_PAYLOAD',
-            tx: {
-              payload,
-              txHash,
-              payerSignature,
-              payeeSignature: null,
-              status: 'EMITIDO_OFFLINE',
-              network: 'EVM',
-              createdAt: Date.now()
-            }
-          };
-        } else {
-          // Generate ephemeral customer Stellar Ed25519 keypair
-          const customerKeypair = Keypair.random();
-          const nextNonce = Date.now();
-          const payload = {
-            id: `TX-NFC-${nextNonce}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-            payer: customerKeypair.publicKey(),
-            payee: payee,
-            amount: amt,
-            asset: currentAccount.asset,
+        payloadToUse = {
+          type: 'POLLAR_PAYMENT_PAYLOAD',
+          tx: {
+            payload,
+            txHash,
+            payerSignature,
+            payeeSignature: null,
+            status: 'EMITIDO_OFFLINE',
             network: 'Stellar',
-            nonce: nextNonce,
-            memo: memo,
-            timestamp: Date.now(),
-          };
-          const txHash = await computeCanonicalTxHash(payload);
-          const payerSignature = await signWithStellarKey(customerKeypair.secret(), txHash);
-
-          payloadToUse = {
-            type: 'POLLAR_PAYMENT_PAYLOAD',
-            tx: {
-              payload,
-              txHash,
-              payerSignature,
-              payeeSignature: null,
-              status: 'EMITIDO_OFFLINE',
-              network: 'Stellar',
-              createdAt: Date.now()
-            }
-          };
-        }
+            createdAt: Date.now()
+          }
+        };
       }
 
       await handleScannedData(payloadToUse);
-      setNfcState({ status: 'listening', message: '✅ Toque procesado y pago contrafirmado.' });
+      setNfcState({ status: 'listening', message: '✅ Cobro NFC completado y contrafirmado. Pasando a sincronización...' });
+      setTimeout(() => {
+        onNavigate?.('sync');
+      }, 1800);
     } catch (e) {
       setFeedback({ type: 'error', message: e.message });
-    }
-  };
-
-  // Bluetooth Device Discovery & Transfer
-  const handleScanBluetooth = async () => {
-    setIsBleConnecting(true);
-    setBleState({ status: 'scanning', message: '🔍 Buscando terminales Bluetooth BLE...' });
-    try {
-      if (isBluetoothSupported()) {
-        const device = await discoverBluetoothTerminal(setBleState);
-        if (device && pendingTx) {
-          await transmitOverBluetooth(device, {
-            type: 'POLLAR_PAYMENT_PAYLOAD',
-            tx: pendingTx
-          }, setBleState);
-          setFeedback({ type: 'success', message: `¡Pago transferido por Bluetooth a ${device.name || 'Terminal'}!` });
-        }
-      } else {
-        await new Promise(r => setTimeout(r, 700));
-        setDetectedBleTerminals(getSimulatedNearbyTerminals(payeeAddress));
-        setBleState({ status: 'idle', message: 'Terminales encontradas en el área.' });
-      }
-    } catch (err) {
-      setFeedback({ type: 'error', message: err.message });
-    } finally {
-      setIsBleConnecting(false);
-    }
-  };
-
-  // Pay to a specific detected Bluetooth terminal
-  const handlePayToBleTerminal = async (terminal) => {
-    if (!pendingTx) return;
-    setIsBleConnecting(true);
-    setBleState({ status: 'transmitting', message: `Conectando con ${terminal.name}...` });
-    try {
-      await new Promise(r => setTimeout(r, 800));
-      if (navigator.vibrate) navigator.vibrate([60, 40, 80]);
-      setFeedback({
-        type: 'success',
-        message: `¡Pago transferido por Bluetooth a ${terminal.name}! Voucher asegurado.`
-      });
-      setBleState({ status: 'success', message: 'Transferencia Bluetooth exitosa' });
-    } catch (err) {
-      setFeedback({ type: 'error', message: err.message });
-    } finally {
-      setIsBleConnecting(false);
     }
   };
 
@@ -635,8 +661,6 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
       setHandshakeStep(2);
       if (transferChannel === 'nfc') {
         setFeedback({ type: 'success', message: '¡Pago firmado! Transmite acercando tu teléfono al receptor NFC.' });
-      } else if (transferChannel === 'bluetooth') {
-        setFeedback({ type: 'success', message: '¡Pago firmado! Conéctate a la terminal POS para transferir por Bluetooth.' });
       } else {
         setFeedback({ type: 'success', message: '¡Pago firmado! Muestra este código QR al comercio para contrafirma.' });
       }
@@ -650,48 +674,168 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
   const handleScannedData = async (rawJson) => {
     setFeedback({ type: '', message: '' });
     try {
-      const data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+      let data;
+      try {
+        data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+      } catch (parseErr) {
+        data = { type: 'POLLAR_NFC_TAG', tagId: String(rawJson || 'NFC').slice(0, 16) };
+      }
+
+      if (!data || typeof data !== 'object') {
+        data = { type: 'POLLAR_NFC_TAG', tagId: String(rawJson || 'NFC').slice(0, 16) };
+      }
 
       // Case 1: Payer scanned an Invoice QR from Merchant
-      if (data.type === 'POLLAR_INVOICE') {
+      if (data.type === 'POLLAR_INVOICE' || (data.payee && data.amount && !data.txHash && !data.payerSignature)) {
         setPayeeAddress(data.payee);
         setPayAmount(data.amount?.toString() || '1.00');
         setPayMemo(data.memo || 'Pago');
         setMode('pay');
         setFeedback({ 
           type: 'success', 
-          message: `Factura recibida: ${data.amount} ${data.asset} para ${data.payee.slice(0, 8)}...` 
+          message: `Factura recibida: ${data.amount} ${data.asset || currentAccount.asset} para ${data.payee.slice(0, 8)}...` 
         });
         if (navigator.vibrate) navigator.vibrate([40, 40]);
       } 
       // Case 2: Merchant scanned a Signed Payment Payload from Payer
-      else if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash) {
+      else if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash || (data.payload && data.payerSignature)) {
         setHandshakeStep(3);
         const payload = data.tx || data;
-        await receiveAndCounterSign(payload, 'device_b');
+        const finalized = await receiveAndCounterSign(payload, 'device_b');
         setFeedback({ 
           type: 'success', 
           message: `¡Pago Bilateral Confirmado! +${payload.payload.amount} ${payload.payload.asset} recibidos y almacenados en Árbol de Merkle.` 
         });
 
+        // Trigger Confirmation Animation Modal for Merchant
+        setConfirmationModal({
+          role: 'receive',
+          amount: payload.payload.amount,
+          asset: payload.payload.asset || currentAccount.asset,
+          memo: payload.payload.memo,
+          counterparty: payload.payload.payer,
+          txHash: finalized?.txHash || payload.txHash,
+          nonce: payload.payload.nonce
+        });
+
         // Confetti celebration
         try {
           confetti({
-            particleCount: 90,
-            spread: 70,
-            origin: { y: 0.55 },
+            particleCount: 100,
+            spread: 75,
+            origin: { y: 0.5 },
             colors: ['#10B981', '#0062FF', '#34D399', '#60A5FA']
           });
-          if (navigator.vibrate) navigator.vibrate([60, 40, 80]);
+          if (navigator.vibrate) navigator.vibrate([60, 40, 80, 40, 100]);
         } catch (e) {}
 
         setPendingTx(null);
         setManualInput('');
+
+        setTimeout(() => {
+          setConfirmationModal(null);
+          onNavigate?.('sync');
+        }, 2500);
+      }
+      // Case 3: Physical NFC Tap (Phone-to-phone contact, physical NFC tag, or hardware tap)
+      else if (data.type === 'POLLAR_NFC_TAG' || data.tagId || transferChannel === 'nfc') {
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+        if (mode === 'receive') {
+          // Terminal de cobro tocada físicamente por el celular del cliente: cobra de corrido
+          setFeedback({
+            type: 'success',
+            message: `¡Contacto NFC detectado! Esperando voucher firmado del cliente por $${receiveAmount}...`
+          });
+        } else {
+          // Celular del pagador tocando la terminal de cobro: genera y firma el pago offline
+          let targetPayee = payeeAddress;
+          let amt = parseFloat(payAmount) || 1.0;
+          let memo = payMemo || 'Pago por Contacto NFC';
+
+          // Query active terminal from relayer backend if payee not explicitly set
+          try {
+            const relayerUrl = getRelayerUrl();
+            const termRes = await fetch(`${relayerUrl}/api/terminal/active`, {
+              headers: { 'ngrok-skip-browser-warning': 'true' }
+            });
+            if (termRes.ok) {
+              const termData = await termRes.json();
+              if (termData.active && termData.terminal) {
+                targetPayee = termData.terminal.originalAddress || termData.terminal.merchantAddress;
+                amt = termData.terminal.amount || amt;
+                memo = termData.terminal.memo || memo;
+                console.log(`[Payer] Terminal POS activa detectada: ${targetPayee}, monto: $${amt} (${memo})`);
+              }
+            }
+          } catch (e) {
+            console.warn('[Payer] Notice querying active terminal:', e.message);
+          }
+
+          if (!targetPayee) {
+            targetPayee = isEvm ? '0x73585ded2E86D584eaf2fcB8e62A7803910c146B' : 'GBBD47IF6LWK7P7MDEV264JPXX34WNVIYTVUKEBHNO7Z6BTZTG6WEZHT';
+          }
+
+          try {
+            const tx = await createOfflinePayment(targetPayee, amt, memo);
+            setPendingTx(tx);
+
+            // Forward voucher to the merchant via relayer backend
+            try {
+              const relayerUrl = getRelayerUrl();
+              fetch(`${relayerUrl}/api/terminal/voucher`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                body: JSON.stringify({
+                  merchantAddress: targetPayee,
+                  voucher: { type: 'POLLAR_PAYMENT_PAYLOAD', tx }
+                })
+              }).catch(() => {});
+            } catch (e) {}
+
+            // Trigger Confirmation Animation Modal for Payer
+            setConfirmationModal({
+              role: 'pay',
+              amount: amt,
+              asset: currentAccount.asset,
+              memo,
+              counterparty: targetPayee,
+              txHash: tx.txHash,
+              nonce: tx.payload?.nonce
+            });
+
+            if (navigator.vibrate) navigator.vibrate([60, 40, 80, 40, 100]);
+            try {
+              confetti({
+                particleCount: 100,
+                spread: 75,
+                origin: { y: 0.5 },
+                colors: ['#10B981', '#0062FF', '#34D399']
+              });
+            } catch (e) {}
+
+            setTimeout(() => {
+              setConfirmationModal(null);
+              onNavigate?.('sync');
+            }, 2500);
+          } catch (payErr) {
+            setFeedback({ type: 'error', message: payErr.message });
+          }
+        }
       } else {
-        throw new Error('Formato QR no compatible con Pollar');
+        // Fallback: In receive mode, any touch triggers tap-to-pay
+        if (mode === 'receive') {
+          setFeedback({
+            type: 'success',
+            message: `¡Contacto detectado! Procesando cobro...`
+          });
+          await handleExecuteNfcTapToPay(receiveAmount, receiveMemo);
+        } else {
+          throw new Error('Formato no reconocido por Pollar. Escanea un QR o toca un dispositivo Pollar.');
+        }
       }
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || 'Error al procesar QR' });
+      setFeedback({ type: 'error', message: err.message || 'Error al procesar datos NFC / QR' });
     }
   };
 
@@ -807,7 +951,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
         </button>
       </div>
 
-      {/* Transfer Channel Selector (QR / Contacto NFC / Bluetooth) */}
+      {/* Transfer Channel Selector (Contacto NFC / Código QR) */}
       <div style={{
         display: 'flex',
         background: '#F1F5F9',
@@ -816,31 +960,6 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
         gap: 4,
         border: '1px solid #E2E8F0'
       }}>
-        <button
-          type="button"
-          onClick={() => { setTransferChannel('qr'); setFeedback({ type: '', message: '' }); }}
-          style={{
-            flex: 1,
-            padding: '9px 10px',
-            borderRadius: 10,
-            fontSize: 12,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            background: transferChannel === 'qr' ? '#FFFFFF' : 'transparent',
-            color: transferChannel === 'qr' ? 'var(--pollar-blue)' : 'var(--text-muted)',
-            boxShadow: transferChannel === 'qr' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
-            border: transferChannel === 'qr' ? '1px solid rgba(0, 98, 255, 0.3)' : '1px solid transparent',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <QrCode size={15} />
-          <span>Código QR</span>
-        </button>
-
         <button
           type="button"
           onClick={() => { setTransferChannel('nfc'); setFeedback({ type: '', message: '' }); }}
@@ -868,7 +987,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
 
         <button
           type="button"
-          onClick={() => { setTransferChannel('bluetooth'); setFeedback({ type: '', message: '' }); }}
+          onClick={() => { setTransferChannel('qr'); setFeedback({ type: '', message: '' }); }}
           style={{
             flex: 1,
             padding: '9px 10px',
@@ -879,16 +998,16 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            background: transferChannel === 'bluetooth' ? '#FFFFFF' : 'transparent',
-            color: transferChannel === 'bluetooth' ? '#7C3AED' : 'var(--text-muted)',
-            boxShadow: transferChannel === 'bluetooth' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
-            border: transferChannel === 'bluetooth' ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid transparent',
+            background: transferChannel === 'qr' ? '#FFFFFF' : 'transparent',
+            color: transferChannel === 'qr' ? 'var(--pollar-blue)' : 'var(--text-muted)',
+            boxShadow: transferChannel === 'qr' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
+            border: transferChannel === 'qr' ? '1px solid rgba(0, 98, 255, 0.3)' : '1px solid transparent',
             cursor: 'pointer',
             transition: 'all 0.2s ease'
           }}
         >
-          <Bluetooth size={15} />
-          <span>Bluetooth</span>
+          <QrCode size={15} />
+          <span>Código QR</span>
         </button>
       </div>
 
@@ -1113,188 +1232,181 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
             </div>
           )}
 
-          {transferChannel === 'nfc' && (
-            <div style={{
-              padding: '12px 14px',
-              borderRadius: 16,
-              background: 'var(--color-emerald-bg)',
-              border: '1.5px solid rgba(16, 185, 129, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}>
+          {transferChannel === 'nfc' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '20px 10px', textAlign: 'center' }}>
+              {/* Pulsing NFC Radar */}
               <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                background: '#FFFFFF',
+                position: 'relative',
+                width: 140,
+                height: 140,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-emerald)',
-                flexShrink: 0
+                justifyContent: 'center'
               }}>
-                <Nfc size={20} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-emerald)', display: 'block' }}>
-                  Modo Contacto NFC (Tap-to-Pay)
-                </span>
-                <span style={{ fontSize: 11, color: '#065F46' }}>
-                  Firma el voucher y luego toca la terminal con el dorso de tu teléfono.
-                </span>
-              </div>
-            </div>
-          )}
-
-          {transferChannel === 'bluetooth' && (
-            <div style={{
-              padding: '12px 14px',
-              borderRadius: 16,
-              background: 'rgba(124, 58, 237, 0.08)',
-              border: '1.5px solid rgba(124, 58, 237, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                background: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#7C3AED',
-                flexShrink: 0
-              }}>
-                <Bluetooth size={20} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#6D28D9', display: 'block' }}>
-                  Modo Bluetooth BLE P2P
-                </span>
-                <span style={{ fontSize: 11, color: '#5B21B6' }}>
-                  Transmisión por proximidad a terminales POS compatibles en el área.
-                </span>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            
-            {/* Recipient Address */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-                Dirección de Destino ({isEvm ? 'EVM 0x...' : 'Stellar G...'})
-              </label>
-              <input
-                type="text"
-                value={payeeAddress}
-                onChange={(e) => setPayeeAddress(e.target.value)}
-                className="pollar-input"
-                style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
-                placeholder={isEvm ? '0x... o escanear de cobro' : 'G... o escanear de cobro'}
-                required
-              />
-            </div>
-
-            {/* Big Amount Card Display */}
-            <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-card-muted)', borderRadius: 20, border: '1px solid var(--border-subtle)' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-light)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Monto a Enviar</span>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-1px', lineHeight: 1 }}>
-                  ${payAmount || '0'}
-                </span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>{currentAccount.asset}</span>
-              </div>
-            </div>
-
-            {/* Quick Amount Chips */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              {quickAmounts.map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => setPayAmount(amt)}
+                <div 
+                  className="pollar-nfc-pulse"
                   style={{
-                    flex: 1,
-                    padding: '10px 4px',
-                    borderRadius: 12,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    fontFamily: 'var(--font-mono)',
-                    border: payAmount === amt ? '1.5px solid var(--pollar-blue)' : '1px solid var(--border-subtle)',
-                    background: payAmount === amt ? 'var(--pollar-blue-light)' : '#FFFFFF',
-                    color: payAmount === amt ? 'var(--pollar-blue)' : 'var(--text-muted)',
-                    transition: 'all 0.15s ease'
+                    position: 'absolute',
+                    inset: 8,
+                    borderRadius: '50%',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '2px solid rgba(16, 185, 129, 0.5)'
                   }}
-                >
-                  ${amt}
-                </button>
-              ))}
-            </div>
+                />
+                <div style={{
+                  width: 82,
+                  height: 82,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#FFFFFF',
+                  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
+                  zIndex: 2
+                }}>
+                  <Nfc size={44} />
+                </div>
+              </div>
 
-            {/* Concept / Memo */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Concepto / Memo</label>
-              <input
-                type="text"
-                value={payMemo}
-                onChange={(e) => setPayMemo(e.target.value)}
-                className="pollar-input"
-              />
-            </div>
+              <div>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'var(--color-emerald-bg)',
+                  color: '#065F46',
+                  padding: '6px 16px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  marginBottom: 8
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-emerald)' }} />
+                  Listo para Pagar por Contacto NFC
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-main)', marginTop: 4 }}>
+                  Acerca tu teléfono a la terminal
+                </h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, maxWidth: 320, lineHeight: 1.5 }}>
+                  El cobrador ingresa la cantidad y concepto en su celular. Solo junta los teléfonos parte trasera con trasera para completar el pago de corrido.
+                </p>
+              </div>
 
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-              <button
-                type="submit"
-                disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline}
-                className="pollar-btn-primary"
-                style={{
-                  flex: 1,
-                  background: transferChannel === 'nfc'
-                    ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                    : transferChannel === 'bluetooth'
-                    ? 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)'
-                    : undefined
-                }}
-              >
-                {transferChannel === 'nfc' ? (
-                  <>
-                    <Nfc size={18} /> Firmar y Pagar por NFC
-                  </>
-                ) : transferChannel === 'bluetooth' ? (
-                  <>
-                    <Bluetooth size={18} /> Firmar y Conectar Bluetooth
-                  </>
-                ) : (
-                  <>
-                    <QrCode size={18} /> Firmar y Generar QR
-                  </>
-                )}
-              </button>
-            </div>
-
-            {availableOffline <= 0 && (
               <div style={{
-                padding: 14,
-                borderRadius: 14,
-                background: 'var(--color-rose-bg)',
-                color: 'var(--color-rose)',
-                border: '1px solid rgba(244, 63, 94, 0.2)',
-                fontSize: 12,
-                fontWeight: 600,
+                width: '100%',
+                maxWidth: 320,
+                padding: '12px 16px',
+                borderRadius: 16,
+                background: 'var(--bg-card-muted)',
+                border: '1px solid var(--border-subtle)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8
+                justifyContent: 'space-between'
               }}>
-                <AlertTriangle size={18} shrink={0} />
-                <span>Saldo en bóveda agotado. Asigna fondos desde la pestaña Bóveda.</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Saldo disponible en Bóveda:</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>
+                  ${availableOffline.toFixed(2)} {currentAccount.asset}
+                </span>
               </div>
-            )}
-          </form>
+            </div>
+          ) : (
+            <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              
+              {/* Recipient Address */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+                  Dirección de Destino ({isEvm ? 'EVM 0x...' : 'Stellar G...'})
+                </label>
+                <input
+                  type="text"
+                  value={payeeAddress}
+                  onChange={(e) => setPayeeAddress(e.target.value)}
+                  className="pollar-input"
+                  style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
+                  placeholder={isEvm ? '0x... o escanear de cobro' : 'G... o escanear de cobro'}
+                  required
+                />
+              </div>
+
+              {/* Big Amount Card Display */}
+              <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-card-muted)', borderRadius: 20, border: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-light)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Monto a Enviar</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 40, fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-1px', lineHeight: 1 }}>
+                    ${payAmount || '0'}
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>{currentAccount.asset}</span>
+                </div>
+              </div>
+
+              {/* Quick Amount Chips */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {quickAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setPayAmount(amt)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 4px',
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      fontFamily: 'var(--font-mono)',
+                      border: payAmount === amt ? '1.5px solid var(--pollar-blue)' : '1px solid var(--border-subtle)',
+                      background: payAmount === amt ? 'var(--pollar-blue-light)' : '#FFFFFF',
+                      color: payAmount === amt ? 'var(--pollar-blue)' : 'var(--text-muted)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+
+              {/* Concept / Memo */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Concepto / Memo</label>
+                <input
+                  type="text"
+                  value={payMemo}
+                  onChange={(e) => setPayMemo(e.target.value)}
+                  className="pollar-input"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button
+                  type="submit"
+                  disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline}
+                  className="pollar-btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  <QrCode size={18} /> Firmar y Generar QR
+                </button>
+              </div>
+
+              {availableOffline <= 0 && (
+                <div style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  background: 'var(--color-rose-bg)',
+                  color: 'var(--color-rose)',
+                  border: '1px solid rgba(244, 63, 94, 0.2)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <AlertTriangle size={18} shrink={0} />
+                  <span>Saldo en bóveda agotado. Asigna fondos desde la pestaña Bóveda.</span>
+                </div>
+              )}
+            </form>
+          )}
         </div>
       )}
 
@@ -1305,8 +1417,6 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
         <div className="pollar-panel" style={{
           border: transferChannel === 'nfc' 
             ? '2px solid var(--color-emerald)'
-            : transferChannel === 'bluetooth'
-            ? '2px solid #7C3AED'
             : '2px solid var(--pollar-blue)',
           alignItems: 'center',
           textAlign: 'center',
@@ -1319,8 +1429,8 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
             gap: 8,
             fontSize: 13,
             fontWeight: 800,
-            color: transferChannel === 'nfc' ? 'var(--color-emerald)' : transferChannel === 'bluetooth' ? '#7C3AED' : 'var(--pollar-blue)',
-            background: transferChannel === 'nfc' ? 'var(--color-emerald-bg)' : transferChannel === 'bluetooth' ? 'rgba(124, 58, 237, 0.12)' : 'var(--pollar-blue-light)',
+            color: transferChannel === 'nfc' ? 'var(--color-emerald)' : 'var(--pollar-blue)',
+            background: transferChannel === 'nfc' ? 'var(--color-emerald-bg)' : 'var(--pollar-blue-light)',
             padding: '6px 16px',
             borderRadius: 20
           }}>
@@ -1328,25 +1438,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
           </div>
 
           {/* Quick channel switcher tabs for this active payment */}
-          <div style={{ display: 'flex', background: '#F1F5F9', padding: 3, borderRadius: 12, gap: 4, width: '100%', maxWidth: 320 }}>
-            <button
-              type="button"
-              onClick={() => setTransferChannel('qr')}
-              style={{
-                flex: 1,
-                padding: '6px 8px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 700,
-                background: transferChannel === 'qr' ? '#FFFFFF' : 'transparent',
-                color: transferChannel === 'qr' ? 'var(--pollar-blue)' : 'var(--text-muted)',
-                boxShadow: transferChannel === 'qr' ? '0 1px 4px rgba(0,0,0,0.05)' : 'none',
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              QR
-            </button>
+          <div style={{ display: 'flex', background: '#F1F5F9', padding: 3, borderRadius: 12, gap: 4, width: '100%', maxWidth: 280 }}>
             <button
               type="button"
               onClick={() => setTransferChannel('nfc')}
@@ -1367,21 +1459,21 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
             </button>
             <button
               type="button"
-              onClick={() => setTransferChannel('bluetooth')}
+              onClick={() => setTransferChannel('qr')}
               style={{
                 flex: 1,
                 padding: '6px 8px',
                 borderRadius: 8,
                 fontSize: 11,
                 fontWeight: 700,
-                background: transferChannel === 'bluetooth' ? '#FFFFFF' : 'transparent',
-                color: transferChannel === 'bluetooth' ? '#7C3AED' : 'var(--text-muted)',
-                boxShadow: transferChannel === 'bluetooth' ? '0 1px 4px rgba(0,0,0,0.05)' : 'none',
+                background: transferChannel === 'qr' ? '#FFFFFF' : 'transparent',
+                color: transferChannel === 'qr' ? 'var(--pollar-blue)' : 'var(--text-muted)',
+                boxShadow: transferChannel === 'qr' ? '0 1px 4px rgba(0,0,0,0.05)' : 'none',
                 border: 'none',
                 cursor: 'pointer'
               }}
             >
-              Bluetooth
+              Código QR
             </button>
           </div>
 
@@ -1511,7 +1603,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
                   📱 Acerca la parte trasera de tu teléfono al comercio
                 </p>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Transmisión NDEF por chip NFC o simulación de contacto
+                  Transmisión automática por contacto directo NFC
                 </p>
               </div>
 
@@ -1553,178 +1645,6 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
                   <Nfc size={18} />
                   <span>{isNfcWriting ? 'Transmitiendo por Chip...' : 'Transmitir por Chip NFC (Hardware)'}</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSimulateCustomerNfcTap('Pago NFC Tap-to-Pay')}
-                  style={{
-                    width: '100%',
-                    padding: '11px 16px',
-                    borderRadius: 14,
-                    background: '#FFFFFF',
-                    border: '1.5px solid #10B981',
-                    color: '#047857',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Zap size={15} />
-                  <span>Simular Toque NFC (Prueba Inmediata)</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* CHANNEL 3: BLUETOOTH BLE PRESENTATION */}
-          {transferChannel === 'bluetooth' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: '100%' }}>
-              <div style={{
-                position: 'relative',
-                width: 130,
-                height: 130,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <div 
-                  className="pollar-ble-pulse"
-                  style={{
-                    position: 'absolute',
-                    inset: 10,
-                    borderRadius: '50%',
-                    background: 'rgba(124, 58, 237, 0.15)',
-                    border: '2px solid rgba(124, 58, 237, 0.5)'
-                  }}
-                />
-                <div style={{
-                  width: 76,
-                  height: 76,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  boxShadow: '0 8px 24px rgba(124, 58, 237, 0.4)',
-                  zIndex: 2
-                }}>
-                  <Bluetooth size={40} />
-                </div>
-              </div>
-
-              <div>
-                <span style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>
-                  ${pendingTx.payload.amount} {pendingTx.payload.asset}
-                </span>
-                <p style={{ fontSize: 13, color: '#7C3AED', fontWeight: 800, marginTop: 4 }}>
-                  📶 Terminales Bluetooth BLE en el área
-                </p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Conéctate directamente a la terminal POS para transferir
-                </p>
-              </div>
-
-              {bleState.message && (
-                <div style={{
-                  padding: '8px 14px',
-                  borderRadius: 12,
-                  background: 'rgba(124, 58, 237, 0.1)',
-                  color: '#6D28D9',
-                  fontSize: 11,
-                  fontWeight: 700
-                }}>
-                  {bleState.message}
-                </div>
-              )}
-
-              {/* Detected BLE Terminals List */}
-              <div style={{ width: '100%', maxWidth: 330, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Terminales Encontradas
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleScanBluetooth}
-                    disabled={isBleConnecting}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#7C3AED',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <RefreshCw size={12} className={isBleConnecting ? 'spin' : ''} />
-                    <span>Escanear</span>
-                  </button>
-                </div>
-
-                {detectedBleTerminals.map((terminal) => (
-                  <div
-                    key={terminal.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 14px',
-                      background: '#FFFFFF',
-                      borderRadius: 14,
-                      border: '1px solid #E2E8F0',
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.03)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 10,
-                        background: 'rgba(124, 58, 237, 0.12)',
-                        color: '#7C3AED',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <Radio size={16} />
-                      </div>
-                      <div style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>
-                          {terminal.name}
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                          {terminal.type} • {terminal.distance}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handlePayToBleTerminal(terminal)}
-                      disabled={isBleConnecting}
-                      style={{
-                        padding: '7px 12px',
-                        borderRadius: 10,
-                        background: '#7C3AED',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Pagar
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -1762,10 +1682,6 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
                 <>
                   <Nfc size={22} color="var(--color-emerald)" /> Terminal de Cobro NFC (Tap-to-Pay)
                 </>
-              ) : transferChannel === 'bluetooth' ? (
-                <>
-                  <Bluetooth size={22} color="#7C3AED" /> Terminal Beacon Bluetooth (POS Activo)
-                </>
               ) : (
                 <>
                   <ArrowDownLeft size={20} color="var(--color-emerald)" /> Terminal de Cobro POS QR
@@ -1774,9 +1690,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
               {transferChannel === 'nfc'
-                ? 'Mantén este dispositivo activo. Acerca el teléfono del cliente para contrafirmar al instante.'
-                : transferChannel === 'bluetooth'
-                ? 'Emitiendo presencia BLE a 10 metros para cobros automáticos sin cables ni internet.'
+                ? 'Ingresa la cantidad y concepto. Acerca el teléfono del cliente para cobrar de corrido.'
                 : 'Paso 1: Muestra esta factura al cliente ➔ Paso 2: Escanea su pago firmado'}
             </p>
           </div>
@@ -2047,169 +1961,8 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
                 </div>
               </div>
 
-              {/* Simulation test button */}
+              {/* Manual paste fallback */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-                <button
-                  type="button"
-                  onClick={() => handleSimulateCustomerNfcTap('Cobro NFC Tap-to-Pay')}
-                  style={{
-                    width: '100%',
-                    padding: '14px 18px',
-                    borderRadius: 16,
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
-                  }}
-                >
-                  <Zap size={18} />
-                  <span>Simular Toque de Cliente (Prueba Local)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowManualCounterSign(true)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 14,
-                    background: '#F1F5F9',
-                    border: '1px solid #CBD5E1',
-                    color: '#475569',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <ClipboardPaste size={15} />
-                  <span>Pegar Payload Manualmente</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* CHANNEL 3: BLUETOOTH BLE POS BEACON */}
-          {transferChannel === 'bluetooth' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-              <div style={{
-                position: 'relative',
-                width: 150,
-                height: 150,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <div 
-                  className="pollar-ble-pulse"
-                  style={{
-                    position: 'absolute',
-                    inset: 12,
-                    borderRadius: '50%',
-                    background: 'rgba(124, 58, 237, 0.15)',
-                    border: '2px solid rgba(124, 58, 237, 0.4)'
-                  }}
-                />
-                <div style={{
-                  width: 86,
-                  height: 86,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  boxShadow: '0 10px 28px rgba(124, 58, 237, 0.4)',
-                  zIndex: 2
-                }}>
-                  <Bluetooth size={46} />
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'center' }}>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(124, 58, 237, 0.1)',
-                  color: '#6D28D9',
-                  padding: '6px 14px',
-                  borderRadius: 20,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  marginBottom: 6
-                }}>
-                  <Radio size={14} />
-                  Beacon POS Transmitiendo (BLE 5.0)
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-main)', fontWeight: 700 }}>
-                  ID: Pollar-POS-{currentAccount.publicKey.slice(2, 6).toUpperCase()}
-                </p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Servicio GATT Pollar activo • Cobertura 10m sin conexión a internet
-                </p>
-              </div>
-
-              {/* Amount and Memo configuration */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, width: '100%' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Monto Esperado</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={receiveAmount}
-                    onChange={(e) => setReceiveAmount(e.target.value)}
-                    className="pollar-input"
-                    style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Concepto</label>
-                  <input
-                    type="text"
-                    value={receiveMemo}
-                    onChange={(e) => setReceiveMemo(e.target.value)}
-                    className="pollar-input"
-                  />
-                </div>
-              </div>
-
-              {/* Simulation test button */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-                <button
-                  type="button"
-                  onClick={() => handleSimulateCustomerNfcTap('Cobro BLE Inalámbrico')}
-                  style={{
-                    width: '100%',
-                    padding: '14px 18px',
-                    borderRadius: 16,
-                    background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)'
-                  }}
-                >
-                  <Zap size={18} />
-                  <span>Simular Pago Entrante por Bluetooth (Prueba)</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setShowManualCounterSign(true)}
@@ -2312,14 +2065,42 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
           fontSize: 13,
           fontWeight: 600,
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: 10,
           background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
           color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)',
           border: feedback.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(244, 63, 94, 0.2)'
         }}>
-          {feedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-          <span>{feedback.message}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {feedback.type === 'success' ? <CheckCircle2 size={18} style={{ flexShrink: 0 }} /> : <AlertTriangle size={18} style={{ flexShrink: 0 }} />}
+            <span>{feedback.message}</span>
+          </div>
+
+          {feedback.type === 'success' && onNavigate && (
+            <button
+              onClick={() => onNavigate('sync')}
+              type="button"
+              style={{
+                marginTop: 4,
+                padding: '10px 14px',
+                borderRadius: 12,
+                background: 'var(--color-emerald)',
+                color: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: 800,
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              <CloudUpload size={15} />
+              <span>Ver en Sincronización On-Chain →</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -2474,6 +2255,104 @@ export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
               ) : (
                 <><ShieldCheck size={18} /> Contrafirmar Pago</>
               )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Apple Pay-style NFC / P2P Payment Confirmation Modal */}
+      {confirmationModal && (
+        <div className="pollar-confirm-overlay">
+          <div className="pollar-confirm-modal">
+            <div className="pollar-check-circle-wrap">
+              <div className="pollar-check-ripple" />
+              <svg className="pollar-check-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                <circle className="pollar-check-svg-circle" cx="26" cy="26" r="25" fill="none" />
+                <path className="pollar-check-svg-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+              </svg>
+            </div>
+
+            <span style={{
+              fontSize: 12,
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: confirmationModal.role === 'receive' ? 'var(--color-emerald)' : 'var(--pollar-blue)',
+              marginBottom: 4
+            }}>
+              {confirmationModal.role === 'receive' ? '¡Cobro NFC Exitoso!' : '¡Pago NFC Enviado!'}
+            </span>
+
+            <h2 style={{
+              fontSize: 32,
+              fontWeight: 900,
+              color: 'var(--text-main)',
+              margin: '0 0 6px 0',
+              fontFeatureSettings: '"tnum"'
+            }}>
+              {confirmationModal.role === 'receive' ? '+' : '-'}${confirmationModal.amount} {confirmationModal.asset}
+            </h2>
+
+            <p style={{
+              fontSize: 14,
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              margin: '0 0 16px 0'
+            }}>
+              {confirmationModal.memo || 'Transacción Bilateral Offline'}
+            </p>
+
+            <div style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: 16,
+              background: 'var(--bg-card-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              marginBottom: 20,
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)' }}>
+                  {confirmationModal.role === 'receive' ? 'Pagador' : 'Comercio / Destino'}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                  {confirmationModal.counterparty ? `${confirmationModal.counterparty.slice(0, 6)}...${confirmationModal.counterparty.slice(-4)}` : 'Terminal Pollar'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)' }}>Canal de Transmisión</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-emerald)' }}>Contacto NFC ✓</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-light)' }}>Estado de Resguardo</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pollar-blue)' }}>Árbol Merkle Local</span>
+              </div>
+            </div>
+
+            <div style={{ width: '100%', marginBottom: 12 }}>
+              <div className="pollar-countdown-bar" />
+            </div>
+
+            <button
+              onClick={() => {
+                setConfirmationModal(null);
+                onNavigate?.('sync');
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: 14,
+                border: 'none',
+                background: confirmationModal.role === 'receive' ? 'var(--color-emerald)' : 'var(--pollar-blue)',
+                color: '#FFFFFF',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              Ver en Sincronización Ahora →
             </button>
           </div>
         </div>

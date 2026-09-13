@@ -125,6 +125,72 @@ app.get('/api/forwarder/nonce/:address', async (req, res) => {
   }
 });
 
+// ==========================================
+// P2P TERMINAL SYNC & VOUCHER EXCHANGE
+// ==========================================
+let activeTerminalSession = null;
+const pendingVouchersForMerchant = new Map();
+
+/**
+ * @route POST /api/terminal/active
+ * @notice Merchant registers their active POS terminal
+ */
+app.post('/api/terminal/active', (req, res) => {
+  const { merchantAddress, amount, memo, asset = 'USDC' } = req.body;
+  if (!merchantAddress) return res.status(400).json({ error: 'merchantAddress required' });
+  activeTerminalSession = {
+    merchantAddress: merchantAddress.toLowerCase(),
+    originalAddress: merchantAddress,
+    amount: parseFloat(amount) || 1.0,
+    memo: memo || 'Cobro Tienda',
+    asset,
+    updatedAt: Date.now()
+  };
+  console.log(`[Terminal] Terminal activa registrada por ${merchantAddress}: $${activeTerminalSession.amount} ${asset}`);
+  res.json({ success: true, terminal: activeTerminalSession });
+});
+
+/**
+ * @route GET /api/terminal/active
+ * @notice Customer or reader checks for the active POS terminal
+ */
+app.get('/api/terminal/active', (req, res) => {
+  if (!activeTerminalSession || (Date.now() - activeTerminalSession.updatedAt > 180000)) {
+    return res.json({ active: false, terminal: null });
+  }
+  res.json({ active: true, terminal: activeTerminalSession });
+});
+
+/**
+ * @route POST /api/terminal/voucher
+ * @notice Customer submits their signed offline voucher for the merchant
+ */
+app.post('/api/terminal/voucher', (req, res) => {
+  const { voucher, merchantAddress } = req.body;
+  if (!voucher || !merchantAddress) {
+    return res.status(400).json({ error: 'voucher and merchantAddress required' });
+  }
+  const key = merchantAddress.toLowerCase();
+  pendingVouchersForMerchant.set(key, voucher);
+  console.log(`[Terminal] Voucher recibido del cliente para comercio ${merchantAddress}: $${voucher.payload?.amount}`);
+  res.json({ success: true });
+});
+
+/**
+ * @route GET /api/terminal/poll-voucher/:merchantAddress
+ * @notice Merchant polls for incoming vouchers from customers
+ */
+app.get('/api/terminal/poll-voucher/:merchantAddress', (req, res) => {
+  const key = req.params.merchantAddress.toLowerCase();
+  if (pendingVouchersForMerchant.has(key)) {
+    const voucher = pendingVouchersForMerchant.get(key);
+    pendingVouchersForMerchant.delete(key);
+    console.log(`[Terminal] Entregando voucher a comercio ${req.params.merchantAddress}`);
+    return res.json({ hasVoucher: true, voucher });
+  }
+  res.json({ hasVoucher: false });
+});
+
 /**
  * @route POST /api/relay/forward
  * @notice ERC-2771 Meta-Transaction Execution

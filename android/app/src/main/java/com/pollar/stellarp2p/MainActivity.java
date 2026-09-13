@@ -115,9 +115,33 @@ public class MainActivity extends BridgeActivity {
             } else {
                 Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
                 if (tag != null) {
+                    try {
+                        android.nfc.tech.Ndef ndef = android.nfc.tech.Ndef.get(tag);
+                        if (ndef != null) {
+                            ndef.connect();
+                            NdefMessage ndefMessage = ndef.getNdefMessage();
+                            if (ndefMessage != null) {
+                                for (NdefRecord record : ndefMessage.getRecords()) {
+                                    byte[] payload = record.getPayload();
+                                    if (payload != null && payload.length > 0) {
+                                        String text = extractNdefText(payload);
+                                        if (text != null && !text.isEmpty()) {
+                                            dispatchNfcDataToWeb(text);
+                                            try { ndef.close(); } catch (Exception ignored) {}
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            try { ndef.close(); } catch (Exception ignored) {}
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Direct NDEF read notice: " + e.getMessage());
+                    }
+
                     byte[] id = tag.getId();
                     String tagIdHex = bytesToHex(id);
-                    Log.i(TAG, "Discovered generic NFC Tag ID: " + tagIdHex);
+                    Log.i(TAG, "Discovered NFC Tag / Contact ID: " + tagIdHex);
                     dispatchNfcDataToWeb("{\"type\":\"POLLAR_NFC_TAG\",\"tagId\":\"" + tagIdHex + "\"}");
                 }
             }

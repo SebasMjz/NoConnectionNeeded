@@ -5,13 +5,11 @@ import PollarLogo from './components/PollarLogo';
 import WalletVault from './components/WalletVault';
 import P2PPaymentTerminal from './components/P2PPaymentTerminal';
 import SyncManager from './components/SyncManager';
-import DualDeviceSimulator from './components/DualDeviceSimulator';
 import LinkAccountModal from './components/LinkAccountModal';
 import {
   Wallet,
   Send,
   RefreshCw,
-  Layers,
   Settings,
   Wifi,
   WifiOff,
@@ -58,7 +56,6 @@ function AppContent() {
     { id: 'home', label: 'Bóveda', icon: Wallet },
     { id: 'send', label: 'Transferir', icon: Send },
     { id: 'sync', label: 'Sincronizar', icon: RefreshCw },
-    { id: 'lab', label: 'Simulador', icon: Layers },
   ];
 
   return (
@@ -239,9 +236,13 @@ function AppContent() {
             onOpenLinkModal={() => setIsLinkModalOpen(true)} 
           />
         )}
-        {activeTab === 'send' && <P2PPaymentTerminal initialMode={terminalMode} />}
+        {activeTab === 'send' && (
+          <P2PPaymentTerminal 
+            initialMode={terminalMode} 
+            onNavigate={(tab) => setActiveTab(tab)} 
+          />
+        )}
         {activeTab === 'sync' && <SyncManager />}
-        {activeTab === 'lab' && <DualDeviceSimulator />}
 
         {/* Safe Bottom Clearance Spacer so content is never covered by bottom nav */}
         <div style={{ height: 60, width: '100%', flexShrink: 0 }} />

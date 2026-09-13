@@ -1,18 +1,12 @@
 /**
  * Pollar P2P Channels Engine
- * Supports multi-modal offline transfers:
- * 1. NFC (Near Field Communication / Tap-to-Pay via Web NFC NDEFReader)
- * 2. Bluetooth Low Energy (BLE / Web Bluetooth API)
- * 3. Fallback Emulation for instant cross-device demonstration
+ * Supports offline transfers:
+ * 1. NFC (Near Field Communication / Tap-to-Pay via Web NFC NDEFReader & Android Native)
  */
-
-// Custom Pollar BLE Service UUID for proximity payments
-export const POLLAR_BLE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
-export const POLLAR_BLE_CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
 /**
  * -------------------------------------------------------------
- * 1. NFC (NEAR FIELD COMMUNICATION / TAP-TO-PAY)
+ * NFC (NEAR FIELD COMMUNICATION / TAP-TO-PAY)
  * -------------------------------------------------------------
  */
 
@@ -33,7 +27,7 @@ export async function startNfcReceiver(onPayloadReceived, onStatusChange = () =>
   if (!isNfcSupported()) {
     onStatusChange({
       status: 'unsupported',
-      message: 'Web NFC no está disponible en este navegador. Puedes usar la simulación táctil.'
+      message: 'Web NFC no está disponible en este navegador.'
     });
     return { stop: () => {} };
   }
@@ -139,139 +133,4 @@ export async function sendNfcPayload(paymentPayload, onStatusChange = () => {}) 
     });
     throw err;
   }
-}
-
-/**
- * -------------------------------------------------------------
- * 2. BLUETOOTH LOW ENERGY (BLE P2P PAYMENTS)
- * -------------------------------------------------------------
- */
-
-/**
- * Checks whether Web Bluetooth API is supported
- */
-export function isBluetoothSupported() {
-  return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
-}
-
-/**
- * Discovers nearby Bluetooth Pollar payment terminals
- * @param {Function} onStatus Callback for discovery status
- * @returns {Promise<BluetoothDevice|null>}
- */
-export async function discoverBluetoothTerminal(onStatus = () => {}) {
-  if (!isBluetoothSupported()) {
-    onStatus({
-      status: 'unsupported',
-      message: 'Web Bluetooth no está disponible en este navegador.'
-    });
-    return null;
-  }
-
-  try {
-    onStatus({
-      status: 'scanning',
-      message: '📶 Buscando terminales Pollar cercanos por Bluetooth...'
-    });
-
-    // Native Web Bluetooth device request dialog
-    const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [
-        'generic_access',
-        'battery_service',
-        POLLAR_BLE_SERVICE_UUID
-      ]
-    });
-
-    onStatus({
-      status: 'found',
-      message: `Dispositivo seleccionado: ${device.name || device.id.slice(0, 8)}`,
-      device
-    });
-
-    return device;
-  } catch (err) {
-    if (err.name === 'NotFoundError') {
-      onStatus({ status: 'cancelled', message: 'Búsqueda de Bluetooth cancelada.' });
-    } else {
-      onStatus({ status: 'error', message: `Error Bluetooth: ${err.message}` });
-    }
-    return null;
-  }
-}
-
-/**
- * Sends signed voucher over Bluetooth connection to a merchant device
- * @param {BluetoothDevice} device The target Bluetooth device
- * @param {Object} paymentPayload The signed offline payment payload
- * @param {Function} onProgress Progress callback
- */
-export async function transmitOverBluetooth(device, paymentPayload, onProgress = () => {}) {
-  if (!device) throw new Error('No se especificó dispositivo Bluetooth.');
-
-  try {
-    onProgress({ status: 'connecting', message: `Conectando con ${device.name || 'Terminal'}...` });
-    
-    // Attempt GATT Server connection
-    let gattServer;
-    if (device.gatt) {
-      gattServer = await device.gatt.connect();
-    }
-
-    onProgress({ status: 'transmitting', message: 'Transmitiendo voucher criptográfico...' });
-
-    // Emulate transmission handshake over BLE channel
-    await new Promise(r => setTimeout(r, 600));
-
-    if (navigator.vibrate) navigator.vibrate([60, 40, 100]);
-
-    onProgress({
-      status: 'success',
-      message: `¡Pago transferido exitosamente por Bluetooth a ${device.name || 'Comercio'}!`
-    });
-
-    return {
-      success: true,
-      deviceName: device.name || 'Terminal Pollar',
-      deviceId: device.id
-    };
-  } catch (err) {
-    console.error('[Bluetooth Transmit Error]', err);
-    onProgress({ status: 'error', message: `Fallo en transmisión Bluetooth: ${err.message}` });
-    throw err;
-  }
-}
-
-/**
- * Generates local mock nearby terminals for preview / demonstration
- */
-export function getSimulatedNearbyTerminals(merchantAddress) {
-  const short = merchantAddress ? merchantAddress.slice(-4).toUpperCase() : 'POS1';
-  return [
-    {
-      id: `ble_pollar_${short}`,
-      name: `Terminal Pollar #${short}`,
-      type: 'Comercio POS',
-      rssi: -52,
-      distance: '0.8 metros',
-      verified: true
-    },
-    {
-      id: 'ble_pollar_cafe',
-      name: 'Café & Market POS',
-      type: 'Comercio Registrado',
-      rssi: -68,
-      distance: '2.4 metros',
-      verified: true
-    },
-    {
-      id: 'ble_pollar_express',
-      name: 'Pollar Express #82',
-      type: 'Terminal Móvil',
-      rssi: -81,
-      distance: '4.1 metros',
-      verified: true
-    }
-  ];
 }

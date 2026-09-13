@@ -114,8 +114,8 @@ export function WalletProvider({ children }) {
       publicKey: keys.publicKey,
       secretKey: keys.secretKey,
       asset: 'USDT',
-      mainBalance: 100.0,
-      derivedOffline: 10.0,
+      mainBalance: 0.0,
+      derivedOffline: 0.0,
       spentOffline: 0.0,
       receivedOffline: 0.0,
       currentNonce: 0,
@@ -124,7 +124,16 @@ export function WalletProvider({ children }) {
   });
 
   // Offline Transactions and Merkle Tree State
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.transactions)) return parsed.transactions;
+      }
+    } catch (e) {}
+    return [];
+  });
   const [merkleTree, setMerkleTree] = useState({
     rootHash: '',
     leaves: [],
@@ -573,9 +582,9 @@ export function WalletProvider({ children }) {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) throw new Error('El monto debe ser mayor a 0');
 
-    const availableOffline = deviceA.derivedOffline - deviceA.spentOffline;
+    const availableOffline = (deviceA.derivedOffline || 0) - (deviceA.spentOffline || 0);
     if (num > availableOffline) {
-      throw new Error(`Límite Offline excedido: Tienes ${availableOffline.toFixed(2)} ${deviceA.asset} disponibles offline e intentas pagar ${num.toFixed(2)} ${deviceA.asset}. Transfiere más saldo a tu bóveda.`);
+      throw new Error(`Saldo insuficiente en Bóveda Offline: Tienes ${availableOffline.toFixed(2)} ${deviceA.asset} disponibles offline. Transfiere o deposita fondos a tu bóveda antes de pagar.`);
     }
 
     const nextNonce = deviceA.currentNonce + 1;
@@ -1022,8 +1031,8 @@ export function WalletProvider({ children }) {
       publicKey: st.publicKey,
       secretKey: st.secretKey,
       asset: 'USDT',
-      mainBalance: 100.0,
-      derivedOffline: 10.0,
+      mainBalance: 0.0,
+      derivedOffline: 0.0,
       spentOffline: 0.0,
       receivedOffline: 0.0,
       currentNonce: 0,

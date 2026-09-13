@@ -241,7 +241,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
 
       {/* Main Digital eWallet Balance Card */}
-      <div className="pollar-balance-card">
+      <div className={`pollar-balance-card ${isRefreshingBalance ? 'reloading-balance' : ''}`}>
         <div className="pollar-card-ambient-circle" />
 
         {/* Card Top: Tag + Refresh */}
@@ -262,7 +262,25 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
         {/* Balance Amount */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>Saldo Total</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>Saldo Total</span>
+            {isRefreshingBalance && (
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: '2px 8px',
+                borderRadius: 10,
+                background: 'rgba(255, 255, 255, 0.25)',
+                color: '#FFFFFF',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}>
+                <RefreshCw size={10} className="animate-spin" />
+                Actualizando...
+              </span>
+            )}
+          </div>
           <div className="pollar-balance-amount">
             <span>${currentAccount.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <span className="pollar-balance-asset">{currentAccount.asset}</span>
