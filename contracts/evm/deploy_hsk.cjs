@@ -1,5 +1,6 @@
-import fs from 'fs';
-import path from 'path';
+const fs = require('fs');
+const path = require('path');
+const { ethers } = require('ethers');
 
 const args = process.argv.slice(2);
 function getArg(flag, defaultValue) {
@@ -37,10 +38,10 @@ if (!privateKey) {
   process.exit(1);
 }
 
-const buildDir = path.resolve('./contracts/evm/build');
+const buildDir = path.resolve(__dirname, 'build');
 function loadArtifact(name) {
   const p = path.resolve(buildDir, name);
-  if (!fs.existsSync(p)) throw new Error(`Artifact ${name} not found. Run: node contracts/evm/compile.mjs`);
+  if (!fs.existsSync(p)) throw new Error(`Artifact ${name} not found. Run: node compile.cjs`);
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
@@ -50,16 +51,8 @@ async function deploy() {
   console.log(`RPC: ${network.rpcUrl}`);
   console.log(`Chain ID: ${network.chainId}`);
   console.log('='.repeat(60));
-  // Setup provider and wallet with longer timeout
-  const ethers = await import('ethers');
-  const provider = new ethers.JsonRpcProvider({
-    url: network.rpcUrl,
-    timeout: 60000, // 60s timeout for slow networks
-  }, network.chainId);
-  
-  // Wait for provider to be ready
-  await provider.getNetwork();
-  
+
+  const provider = new ethers.JsonRpcProvider(network.rpcUrl, network.chainId);
   const wallet = new ethers.Wallet(privateKey, provider);
 
   console.log(`Deployer: ${wallet.address}`);
@@ -115,7 +108,7 @@ async function deploy() {
     explorer: network.blockExplorer,
   };
 
-  const outputPath = path.resolve(`contracts/evm/deploy_${networkName}.json`);
+  const outputPath = path.resolve(__dirname, `deploy_${networkName}.json`);
   fs.writeFileSync(outputPath, JSON.stringify(deployInfo, null, 2));
   console.log(`\n✓ Deployment info saved: ${outputPath}`);
 
