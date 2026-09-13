@@ -40,7 +40,24 @@ export const EVM_NETWORKS = {
     tokenSymbol: 'USDC',
     usdcAddress: '',
     usdcDecimals: 18,
-    vaultAddress: '0x8901234567890123456789012345678901234567'
+    vaultAddress: '',
+    forwarderAddress: '',
+    forwarderDeployed: false
+  },
+  hskMainnet: {
+    id: 'hskMainnet',
+    name: 'HashKey Chain Mainnet',
+    chainId: 177,
+    rpcUrl: 'https://mainnet.hsk.xyz',
+    blockExplorer: 'https://explorer.hsk.xyz',
+    symbol: 'HSK',
+    nativeToken: 'HSK',
+    tokenSymbol: 'USDC',
+    usdcAddress: '',
+    usdcDecimals: 18,
+    vaultAddress: '',
+    forwarderAddress: '',
+    forwarderDeployed: false
   },
   baseSepolia: {
     id: 'baseSepolia',
