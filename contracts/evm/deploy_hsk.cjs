@@ -55,7 +55,11 @@ async function deploy() {
   const provider = new ethers.JsonRpcProvider(network.rpcUrl, network.chainId);
   const wallet = new ethers.Wallet(privateKey, provider);
 
+  // Sync nonce from chain
+  const currentNonce = await provider.getTransactionCount(wallet.address);
   console.log(`Deployer: ${wallet.address}`);
+  console.log(`Current nonce: ${currentNonce}`);
+  
   const balance = await provider.getBalance(wallet.address);
   console.log(`Balance: ${ethers.formatEther(balance)} HSK`);
 
@@ -70,17 +74,19 @@ async function deploy() {
   console.log('\n--- Deploying PollarForwarder ---');
   const forwarderArtifact = loadArtifact('PollarForwarder.json');
   const forwarderFactory = new ethers.ContractFactory(forwarderArtifact.abi, forwarderArtifact.bytecode, wallet);
-  const forwarder = await forwarderFactory.deploy();
+  const forwarder = await forwarderFactory.deploy({ nonce: currentNonce });
   await forwarder.waitForDeployment();
   const forwarderAddress = await forwarder.getAddress();
   deployed.forwarder = forwarderAddress;
   console.log(`✓ PollarForwarder deployed: ${forwarderAddress}`);
 
-  // 2. Deploy PollarVault
+  // 2. Deploy PollarVault (with next nonce)
   console.log('\n--- Deploying PollarVault ---');
+  const nextNonce = await provider.getTransactionCount(wallet.address);
+  console.log(`Using nonce: ${nextNonce}`);
   const vaultArtifact = loadArtifact('PollarVault.json');
   const vaultFactory = new ethers.ContractFactory(vaultArtifact.abi, vaultArtifact.bytecode, wallet);
-  const vault = await vaultFactory.deploy(forwarderAddress);
+  const vault = await vaultFactory.deploy(forwarderAddress, { nonce: nextNonce });
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
   deployed.vault = vaultAddress;
@@ -89,9 +95,11 @@ async function deploy() {
   // 3. MockUSDC (testnet only)
   if (networkName.includes('testnet') || networkName.includes('Testnet')) {
     console.log('\n--- Deploying MockUSDC (testnet only) ---');
+    const mockNonce = await provider.getTransactionCount(wallet.address);
+    console.log(`Using nonce: ${mockNonce}`);
     const mockArtifact = loadArtifact('MockUSDC.json');
     const mockFactory = new ethers.ContractFactory(mockArtifact.abi, mockArtifact.bytecode, wallet);
-    const mock = await mockFactory.deploy();
+    const mock = await mockFactory.deploy({ nonce: mockNonce });
     await mock.waitForDeployment();
     const mockAddress = await mock.getAddress();
     deployed.mockUSDC = mockAddress;
