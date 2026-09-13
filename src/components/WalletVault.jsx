@@ -30,9 +30,8 @@ import {
 
 export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const {
-    activeDevice,
+    myWallet,
     deviceA,
-    deviceB,
     allocateOfflineFunds,
     returnFundsToMain,
     refreshOnlineBalance,
@@ -45,8 +44,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     activeEvmChain
   } = useWallet();
 
-  const isMerchant = activeDevice === 'device_b';
-  const currentAccount = isMerchant ? deviceB : deviceA;
+  const currentAccount = myWallet || deviceA;
 
   const [transferAmount, setTransferAmount] = useState('');
   const [activeAction, setActiveAction] = useState('allocate');
@@ -59,11 +57,18 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [receiveQrUrl, setReceiveQrUrl] = useState('');
 
-  const availableInMain = Math.max(0, deviceA.mainBalance - deviceA.derivedOffline);
-  const unspentOffline = Math.max(0, deviceA.derivedOffline - deviceA.spentOffline);
-  const usagePercentage = deviceA.derivedOffline > 0
-    ? Math.min(100, (deviceA.spentOffline / deviceA.derivedOffline) * 100)
+  const availableInMain = Math.max(0, currentAccount.mainBalance - currentAccount.derivedOffline);
+  const unspentOffline = Math.max(0, currentAccount.derivedOffline - currentAccount.spentOffline);
+  const usagePercentage = currentAccount.derivedOffline > 0
+    ? Math.min(100, (currentAccount.spentOffline / currentAccount.derivedOffline) * 100)
     : 0;
+
+  // Auto-refresh balances and smart contract escrow on mount or when address is active
+  useEffect(() => {
+    if (currentAccount.publicKey) {
+      refreshOnlineBalance(currentAccount.publicKey);
+    }
+  }, [currentAccount.publicKey]);
 
   const recentTxs = transactions.slice(0, 5);
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
@@ -91,7 +96,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
           setIsDepositingVault(true);
           try {
             let res;
-            if (deviceA.asset === 'USDC') {
+            if (currentAccount.asset === 'USDC') {
               res = await fundEvmTokenVault(transferAmount);
             } else {
               res = await fundEvmVault(transferAmount);
@@ -100,9 +105,10 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             setLastDepositReceipt(res);
             setFeedback({
               type: 'success',
-              message: `¡${transferAmount} ${deviceA.asset} depositados en Smart Contract Vault y bloqueados para Offline!`,
+              message: `¡${transferAmount} ${currentAccount.asset} depositados en Smart Contract Vault y bloqueados para Offline!`,
               explorerUrl: res?.explorerUrl || (res?.hash ? `${EVM_NETWORKS[activeEvmChain]?.blockExplorer}/tx/${res.hash}` : null)
             });
+            await refreshOnlineBalance(currentAccount.publicKey);
           } catch (depositErr) {
             throw new Error(`Error en el depósito on-chain: ${depositErr.message || depositErr}`);
           } finally {
@@ -110,11 +116,11 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
           }
         } else {
           allocateOfflineFunds(transferAmount);
-          setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} bloqueados en Bóveda Offline (Local)` });
+          setFeedback({ type: 'success', message: `${transferAmount} ${currentAccount.asset} bloqueados en Bóveda Offline (Local)` });
         }
       } else {
         returnFundsToMain(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} liberados a Billetera Principal` });
+        setFeedback({ type: 'success', message: `${transferAmount} ${currentAccount.asset} liberados a Billetera Principal` });
       }
       setTransferAmount('');
     } catch (err) {
@@ -186,6 +192,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         type: 'success',
         message: `¡0.001 Sepolia ETH depositados en el Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
       });
+      await refreshOnlineBalance(currentAccount.publicKey);
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -205,6 +212,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         type: 'success',
         message: `¡${amt} USDC depositados en Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
       });
+      await refreshOnlineBalance(currentAccount.publicKey);
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -219,13 +227,13 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
 
       {/* Main Digital eWallet Balance Card */}
-      <div className={`pollar-balance-card ${isMerchant ? 'merchant' : ''}`}>
+      <div className="pollar-balance-card">
         <div className="pollar-card-ambient-circle" />
 
         {/* Card Top: Tag + Refresh */}
         <div className="pollar-card-top">
           <span className="pollar-card-tag">
-            {isMerchant ? 'Terminal POS Comercio' : 'Billetera Principal'}
+            Mi Billetera Pollar
           </span>
 
           <button
@@ -267,17 +275,17 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
           )}
 
-          {!isMerchant ? (
-            <div className="pollar-card-subline">
-              <span>Libre: <strong>{availableInMain.toFixed(2)}</strong></span>
-              <span>•</span>
-              <span>Bóveda Offline: <strong>{unspentOffline.toFixed(2)}</strong></span>
-            </div>
-          ) : (
-            <div className="pollar-card-subline">
-              <span>Cobros Offline: <strong>+{deviceB.receivedOffline.toFixed(2)} {deviceB.asset}</strong></span>
-            </div>
-          )}
+          <div className="pollar-card-subline">
+            <span>Libre: <strong>{availableInMain.toFixed(2)}</strong></span>
+            <span>•</span>
+            <span>Bóveda Offline: <strong>{unspentOffline.toFixed(2)}</strong></span>
+            {currentAccount.receivedOffline > 0 && (
+              <>
+                <span>•</span>
+                <span style={{ color: '#6EE7B7' }}>Cobros: <strong>+{currentAccount.receivedOffline.toFixed(2)} {currentAccount.asset}</strong></span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Address Pill */}
@@ -297,7 +305,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span className="pollar-action-label">Pagar</span>
           </button>
 
-          <button onClick={() => isEvm ? setShowReceiveModal(true) : onNavigate?.('send')} className="pollar-action-btn">
+          <button onClick={() => onNavigate?.('send', 'receive')} className="pollar-action-btn">
             <div className="pollar-action-icon-circle" style={{ color: 'var(--color-emerald)' }}>
               <ArrowDownLeft size={20} />
             </div>
@@ -341,20 +349,20 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <span className="pollar-transfer-name">Vincular</span>
           </button>
 
-          {/* Comercio B */}
-          <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
+          {/* Cobrar */}
+          <button onClick={() => onNavigate?.('send', 'receive')} className="pollar-transfer-item">
             <div className="pollar-transfer-circle" style={{ background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', border: '2px solid rgba(16, 185, 129, 0.3)' }}>
-              POS
+              <ArrowDownLeft size={18} />
             </div>
-            <span className="pollar-transfer-name">Comercio B</span>
+            <span className="pollar-transfer-name">Cobrar</span>
           </button>
 
-          {/* Pagador A */}
+          {/* Pagar */}
           <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
             <div className="pollar-transfer-circle" style={{ background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', border: '2px solid rgba(0, 98, 255, 0.3)' }}>
-              P-A
+              <Send size={18} />
             </div>
-            <span className="pollar-transfer-name">Pagador A</span>
+            <span className="pollar-transfer-name">Pagar</span>
           </button>
 
           {/* +Fondos / Faucet */}
@@ -368,7 +376,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
       </div>
 
       {/* Offline Vault Allocation Panel (Collapsible) */}
-      {showAllocation && !isMerchant && (
+      {showAllocation && (
         <div className="pollar-panel animate-in fade-in slide-in-from-top-3 duration-200">
           <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -381,7 +389,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               </div>
             </div>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
-              {unspentOffline.toFixed(2)} {deviceA.asset}
+              {unspentOffline.toFixed(2)} {currentAccount.asset}
             </span>
           </div>
 
@@ -429,7 +437,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 className="pollar-input-large"
               />
               <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 14, fontWeight: 800, color: 'var(--text-muted)' }}>
-                {deviceA.asset}
+                {currentAccount.asset}
               </span>
             </div>
 
@@ -468,7 +476,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 </span>
               ) : (
                 activeAction === 'allocate'
-                  ? (isEvm && depositOnChain ? `Bloquear y Depositar ${transferAmount ? `${transferAmount} ${deviceA.asset}` : ''} en Smart Contract` : 'Bloquear Fondos para Offline')
+                  ? (isEvm && depositOnChain ? `Bloquear y Depositar ${transferAmount ? `${transferAmount} ${currentAccount.asset}` : ''} en Smart Contract` : 'Bloquear Fondos para Offline')
                   : 'Liberar a Billetera'
               )}
             </button>
@@ -495,20 +503,20 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   fontWeight: 800,
                   padding: '2px 8px',
                   borderRadius: 10,
-                  background: ((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? '#D1FAE5' : '#FEF3C7',
-                  color: ((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? '#065F46' : '#92400E'
+                  background: ((currentAccount.tokenVaultState?.availableToSpend > 0) || (currentAccount.vaultState?.availableToSpend > 0)) ? '#D1FAE5' : '#FEF3C7',
+                  color: ((currentAccount.tokenVaultState?.availableToSpend > 0) || (currentAccount.vaultState?.availableToSpend > 0)) ? '#065F46' : '#92400E'
                 }}>
-                  {((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? 'Bóveda Fondeada en Contrato' : 'Sin Fondos en Contrato'}
+                  {((currentAccount.tokenVaultState?.availableToSpend > 0) || (currentAccount.vaultState?.availableToSpend > 0)) ? 'Bóveda Fondeada en Contrato' : 'Sin Fondos en Contrato'}
                 </span>
               </div>
 
               <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <div>Contrato: {EVM_NETWORKS[activeEvmChain]?.vaultAddress?.slice(0, 8)}...{EVM_NETWORKS[activeEvmChain]?.vaultAddress?.slice(-6)}</div>
-                <div style={{ color: (deviceA.tokenVaultState?.availableToSpend > 0) ? '#065F46' : 'inherit', fontWeight: (deviceA.tokenVaultState?.availableToSpend > 0) ? 800 : 500 }}>
-                  USDC en Contrato: <strong>{(deviceA.tokenVaultState?.availableToSpend || 0).toFixed(2)} USDC</strong> (Total Bloqueado: {(deviceA.tokenVaultState?.lockedAmount || 0).toFixed(2)})
+                <div style={{ color: (currentAccount.tokenVaultState?.availableToSpend > 0) ? '#065F46' : 'inherit', fontWeight: (currentAccount.tokenVaultState?.availableToSpend > 0) ? 800 : 500 }}>
+                  USDC en Contrato: <strong>{(currentAccount.tokenVaultState?.availableToSpend || 0).toFixed(2)} USDC</strong> (Total Bloqueado: {(currentAccount.tokenVaultState?.lockedAmount || 0).toFixed(2)})
                 </div>
                 <div>
-                  ETH en Contrato: <strong>{(deviceA.vaultState?.availableToSpend || 0).toFixed(4)} ETH</strong>
+                  ETH en Contrato: <strong>{(currentAccount.vaultState?.availableToSpend || 0).toFixed(4)} ETH</strong>
                 </div>
               </div>
 
@@ -520,17 +528,17 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                 <button
                   type="button"
-                  disabled={isDepositingVault || (deviceA.nativeBalance || 0) < 0.001}
+                  disabled={isDepositingVault || (currentAccount.nativeBalance || 0) < 0.001}
                   onClick={handleDepositToSmartContract}
                   style={{
                     padding: '9px 12px',
                     borderRadius: 12,
-                    background: (deviceA.nativeBalance || 0) >= 0.001 ? 'var(--pollar-blue)' : '#94A3B8',
+                    background: (currentAccount.nativeBalance || 0) >= 0.001 ? 'var(--pollar-blue)' : '#94A3B8',
                     color: '#FFFFFF',
                     fontWeight: 800,
                     fontSize: 11,
                     border: 'none',
-                    cursor: (deviceA.nativeBalance || 0) >= 0.001 ? 'pointer' : 'not-allowed',
+                    cursor: (currentAccount.nativeBalance || 0) >= 0.001 ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -539,7 +547,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 >
                   {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
                   <span>
-                    {(deviceA.nativeBalance || 0) >= 0.001
+                    {(currentAccount.nativeBalance || 0) >= 0.001
                       ? 'Depositar 0.001 ETH en Smart Contract'
                       : 'Recarga Sepolia ETH para depositar'}
                   </span>
@@ -547,17 +555,17 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
                 <button
                   type="button"
-                  disabled={isDepositingVault || (deviceA.mainBalance || 0) < 1 || (deviceA.nativeBalance || 0) < 0.0003}
+                  disabled={isDepositingVault || (currentAccount.mainBalance || 0) < 1 || (currentAccount.nativeBalance || 0) < 0.0003}
                   onClick={() => handleDepositTokenToSmartContract('1')}
                   style={{
                     padding: '9px 12px',
                     borderRadius: 12,
-                    background: ((deviceA.mainBalance || 0) >= 1 && (deviceA.nativeBalance || 0) >= 0.0003) ? '#10B981' : '#94A3B8',
+                    background: ((currentAccount.mainBalance || 0) >= 1 && (currentAccount.nativeBalance || 0) >= 0.0003) ? '#10B981' : '#94A3B8',
                     color: '#FFFFFF',
                     fontWeight: 800,
                     fontSize: 11,
                     border: 'none',
-                    cursor: ((deviceA.mainBalance || 0) >= 1 && (deviceA.nativeBalance || 0) >= 0.0003) ? 'pointer' : 'not-allowed',
+                    cursor: ((currentAccount.mainBalance || 0) >= 1 && (currentAccount.nativeBalance || 0) >= 0.0003) ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -566,9 +574,9 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 >
                   {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
                   <span>
-                    {(deviceA.mainBalance || 0) >= 1
-                      ? ((deviceA.nativeBalance || 0) >= 0.0003 ? 'Depositar 1.00 USDC en Smart Contract' : 'Necesitas gas Sepolia ETH para depositar USDC')
-                      : 'Sin saldo USDC en Pagador A'}
+                    {(currentAccount.mainBalance || 0) >= 1
+                      ? ((currentAccount.nativeBalance || 0) >= 0.0003 ? 'Depositar 1.00 USDC en Smart Contract' : 'Necesitas gas Sepolia ETH para depositar USDC')
+                      : 'Sin saldo USDC en Billetera'}
                   </span>
                 </button>
               </div>
@@ -708,7 +716,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                     {isEvm ? 'Fondeo de Billetera (Sepolia)' : 'Recibir Fondos'}
                   </h3>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {isMerchant ? 'Cuenta Comercio B (Cobrador)' : 'Cuenta Principal A (Pagador)'}
+                    Mi Billetera Pollar · Recibir Fondos
                   </p>
                 </div>
               </div>

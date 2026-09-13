@@ -66,11 +66,19 @@ export function WalletProvider({ children }) {
     return null;
   });
 
-  // --- EVM Accounts ---
-  const [evmDeviceA, setEvmDeviceA] = useState(() => {
+  // Single EVM Account per device installation
+  const [evmWallet, setEvmWallet] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.evmWallet) return parsed.evmWallet;
+        if (parsed.evmDeviceA) return parsed.evmDeviceA;
+      }
+    } catch (e) {}
     const keys = generateRealEvmKeypair();
     return {
-      name: 'Billetera Principal EVM (Pagador A)',
+      name: 'Mi Billetera EVM',
       publicKey: keys.address,
       secretKey: keys.privateKey,
       address: keys.address,
@@ -79,53 +87,34 @@ export function WalletProvider({ children }) {
       mainBalance: 0.0,
       derivedOffline: 0.0,
       spentOffline: 0.0,
+      receivedOffline: 0.0,
       nativeBalance: 0.0,
       currentNonce: 0,
       network: 'evm'
     };
   });
 
-  const [evmDeviceB, setEvmDeviceB] = useState(() => {
-    const keys = generateRealEvmKeypair();
-    return {
-      name: 'Terminal Comercio EVM (Cobrador B)',
-      publicKey: keys.address,
-      secretKey: keys.privateKey,
-      address: keys.address,
-      privateKey: keys.privateKey,
-      asset: 'USDC',
-      mainBalance: 0.0,
-      receivedOffline: 0.0,
-      nativeBalance: 0.0,
-      network: 'evm'
-    };
-  });
-
-  // --- Stellar Accounts ---
-  const [stellarDeviceA, setStellarDeviceA] = useState(() => {
+  // Single Stellar Account per device installation
+  const [stellarWallet, setStellarWallet] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.stellarWallet) return parsed.stellarWallet;
+        if (parsed.stellarDeviceA) return parsed.stellarDeviceA;
+      }
+    } catch (e) {}
     const keys = generateRealStellarKeypair();
     return {
-      name: 'Billetera Principal (Pagador A)',
+      name: 'Mi Billetera Stellar',
       publicKey: keys.publicKey,
       secretKey: keys.secretKey,
       asset: 'USDT',
       mainBalance: 100.0,
       derivedOffline: 10.0,
       spentOffline: 0.0,
-      currentNonce: 0,
-      network: 'stellar'
-    };
-  });
-
-  const [stellarDeviceB, setStellarDeviceB] = useState(() => {
-    const keys = generateRealStellarKeypair();
-    return {
-      name: 'Terminal Comercio (Cobrador B)',
-      publicKey: keys.publicKey,
-      secretKey: keys.secretKey,
-      asset: 'USDT',
-      mainBalance: 25.0,
       receivedOffline: 0.0,
+      currentNonce: 0,
       network: 'stellar'
     };
   });
@@ -143,26 +132,19 @@ export function WalletProvider({ children }) {
   const [lastSyncResult, setLastSyncResult] = useState(null);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
 
-  // Active Device Pointers based on activeNetwork
+  // Active Device Pointer based on activeNetwork: Single unified wallet per device!
   const isEvm = activeNetwork === 'evm';
-  const deviceA = isEvm ? evmDeviceA : stellarDeviceA;
-  const deviceB = isEvm ? evmDeviceB : stellarDeviceB;
-
-  const setDeviceA = (updater) => {
-    if (isEvm) {
-      setEvmDeviceA(updater);
-    } else {
-      setStellarDeviceA(updater);
-    }
+  const myWallet = isEvm ? evmWallet : stellarWallet;
+  const setMyWallet = (updater) => {
+    if (isEvm) setEvmWallet(updater);
+    else setStellarWallet(updater);
   };
 
-  const setDeviceB = (updater) => {
-    if (isEvm) {
-      setEvmDeviceB(updater);
-    } else {
-      setStellarDeviceB(updater);
-    }
-  };
+  // Backwards compatible aliases for components:
+  const deviceA = myWallet;
+  const deviceB = myWallet;
+  const setDeviceA = setMyWallet;
+  const setDeviceB = setMyWallet;
 
   // Load from localStorage
   useEffect(() => {
@@ -170,30 +152,16 @@ export function WalletProvider({ children }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.evmDeviceA) {
-          const devA = { ...parsed.evmDeviceA };
-          // If stored state has mocked values, reset to real zero
-          if (devA.asset?.includes('USDT') || devA.mainBalance === 250) {
-            devA.asset = 'USDC';
-            devA.mainBalance = 0.0;
-            devA.derivedOffline = 0.0;
-            devA.spentOffline = 0.0;
-            devA.nativeBalance = 0.0;
-          }
-          setEvmDeviceA(devA);
+        if (parsed.evmWallet) {
+          setEvmWallet(parsed.evmWallet);
+        } else if (parsed.evmDeviceA) {
+          setEvmWallet(parsed.evmDeviceA);
         }
-        if (parsed.evmDeviceB) {
-          const devB = { ...parsed.evmDeviceB };
-          if (devB.asset?.includes('USDT') || devB.mainBalance === 40) {
-            devB.asset = 'USDC';
-            devB.mainBalance = 0.0;
-            devB.receivedOffline = 0.0;
-            devB.nativeBalance = 0.0;
-          }
-          setEvmDeviceB(devB);
+        if (parsed.stellarWallet) {
+          setStellarWallet(parsed.stellarWallet);
+        } else if (parsed.stellarDeviceA) {
+          setStellarWallet(parsed.stellarDeviceA);
         }
-        if (parsed.stellarDeviceA) setStellarDeviceA(parsed.stellarDeviceA);
-        if (parsed.stellarDeviceB) setStellarDeviceB(parsed.stellarDeviceB);
         if (parsed.activeNetwork) setActiveNetwork(parsed.activeNetwork);
         if (parsed.activeEvmChain) setActiveEvmChain(parsed.activeEvmChain);
         if (parsed.transactions) setTransactions(parsed.transactions);
@@ -219,15 +187,13 @@ export function WalletProvider({ children }) {
     const state = {
       activeNetwork,
       activeEvmChain,
-      evmDeviceA,
-      evmDeviceB,
-      stellarDeviceA,
-      stellarDeviceB,
+      evmWallet,
+      stellarWallet,
       transactions,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem('pollar_active_network', activeNetwork);
-  }, [activeNetwork, activeEvmChain, evmDeviceA, evmDeviceB, stellarDeviceA, stellarDeviceB, transactions]);
+  }, [activeNetwork, activeEvmChain, evmWallet, stellarWallet, transactions]);
 
   // Recalculate Merkle Tree whenever transactions or activeNetwork change
   useEffect(() => {
@@ -263,45 +229,45 @@ export function WalletProvider({ children }) {
 
     try {
       if (isEvm) {
-        const addressA = (evmDeviceA.address || evmDeviceA.publicKey || '').trim();
-        const addressB = (evmDeviceB.address || evmDeviceB.publicKey || '').trim();
+        const address = (targetPubKey || evmWallet.address || evmWallet.publicKey || '').trim();
+        const res = address ? await fetchRealEvmAccountBalances(address, activeEvmChain) : null;
 
-        const [resA, resB] = await Promise.all([
-          addressA ? fetchRealEvmAccountBalances(addressA, activeEvmChain) : Promise.resolve(null),
-          addressB ? fetchRealEvmAccountBalances(addressB, activeEvmChain) : Promise.resolve(null)
-        ]);
-
-        if (resA && resA.success) {
-          setEvmDeviceA(prev => ({
-            ...prev,
-            mainBalance: resA.usdcBalance,
-            nativeBalance: resA.nativeBalance,
-            asset: 'USDC',
-            symbol: resA.nativeSymbol,
-            vaultState: resA.vaultState,
-            tokenVaultState: resA.tokenVaultState
-          }));
-        }
-
-        if (resB && resB.success) {
-          setEvmDeviceB(prev => ({
-            ...prev,
-            mainBalance: resB.usdcBalance,
-            nativeBalance: resB.nativeBalance,
-            asset: 'USDC',
-            symbol: resB.nativeSymbol
-          }));
+        if (res && res.success) {
+          setEvmWallet(prev => {
+            let derivedOffline = prev.derivedOffline;
+            let spentOffline = prev.spentOffline;
+            // When smart contract data is retrieved, sync available offline capacity with live on-chain escrow
+            if (res.tokenVaultState) {
+              const contractAvail = res.tokenVaultState.availableToSpend;
+              derivedOffline = contractAvail;
+              spentOffline = 0.0;
+            } else if (res.vaultState && prev.asset === 'ETH') {
+              derivedOffline = res.vaultState.availableToSpend;
+              spentOffline = 0.0;
+            }
+            return {
+              ...prev,
+              mainBalance: res.usdcBalance,
+              nativeBalance: res.nativeBalance,
+              asset: 'USDC',
+              symbol: res.nativeSymbol,
+              vaultState: res.vaultState,
+              tokenVaultState: res.tokenVaultState,
+              derivedOffline,
+              spentOffline
+            };
+          });
         }
 
         setIsRefreshingBalance(false);
-        return resA;
+        return res;
       } else {
-        const pubKey = targetPubKey || deviceA.publicKey;
+        const pubKey = targetPubKey || stellarWallet.publicKey;
         const { fetchRealAccountBalances } = await import('../services/stellarCrypto');
         const horizonUrl = import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org';
         const res = await fetchRealAccountBalances(pubKey, horizonUrl);
         if (res.success) {
-          setDeviceA(prev => ({
+          setStellarWallet(prev => ({
             ...prev,
             mainBalance: res.primaryBalance,
             asset: res.primaryAsset,
@@ -329,7 +295,7 @@ export function WalletProvider({ children }) {
     const clean = inputKey.trim();
     if (clean.startsWith('0x') || clean.length === 64 || clean.length === 66) {
       const imported = importEvmAccount(clean);
-      setEvmDeviceA(prev => ({
+      setEvmWallet(prev => ({
         ...prev,
         publicKey: imported.publicKey,
         address: imported.address,
@@ -339,7 +305,7 @@ export function WalletProvider({ children }) {
       }));
       const balRes = await fetchRealEvmAccountBalances(imported.address, activeEvmChain);
       if (balRes.success) {
-        setEvmDeviceA(prev => ({
+        setEvmWallet(prev => ({
           ...prev,
           mainBalance: balRes.usdcBalance,
           nativeBalance: balRes.nativeBalance,
@@ -355,7 +321,7 @@ export function WalletProvider({ children }) {
     } else {
       const { importStellarAccount } = await import('../services/stellarCrypto');
       const imported = importStellarAccount(clean);
-      setStellarDeviceA(prev => ({
+      setStellarWallet(prev => ({
         ...prev,
         publicKey: imported.publicKey,
         secretKey: imported.secretKey || prev.secretKey,
@@ -443,10 +409,20 @@ export function WalletProvider({ children }) {
       txHash,
       payerSignature,
       payeeSignature: null,
-      status: 'PENDING_COUNTER_SIGN',
+      status: 'EMITIDO_OFFLINE',
       network: isEvm ? 'EVM' : 'Stellar',
       createdAt: Date.now(),
     };
+
+    // Immediately deduct from available offline vault on payer device
+    setMyWallet(prev => ({
+      ...prev,
+      spentOffline: (prev.spentOffline || 0) + num,
+      currentNonce: nextNonce
+    }));
+
+    // Add to payer's transaction history
+    setTransactions(prev => [pendingTx, ...prev]);
 
     return pendingTx;
   };
@@ -480,7 +456,7 @@ export function WalletProvider({ children }) {
       const counterRes = await counterSignEvmPaymentReceipt(
         pendingTx.txHash,
         pendingTx.payerSignature,
-        deviceB.secretKey
+        myWallet.secretKey
       );
       payeeSignature = counterRes.payeeSignature;
 
@@ -509,7 +485,7 @@ export function WalletProvider({ children }) {
 
       // 3. Payee creates Stellar Ed25519 Counter-Signature
       payeeSignature = await counterSignPaymentReceipt(
-        deviceB.secretKey,
+        myWallet.secretKey,
         pendingTx.txHash,
         pendingTx.payerSignature
       );
@@ -529,16 +505,10 @@ export function WalletProvider({ children }) {
       counterSignedAt: Date.now(),
     };
 
-    // Update balances
-    setDeviceA(prev => ({
+    // Update receiver's wallet: increment receivedOffline ONLY!
+    setMyWallet(prev => ({
       ...prev,
-      spentOffline: prev.spentOffline + pendingTx.payload.amount,
-      currentNonce: Math.max(prev.currentNonce, pendingTx.payload.nonce),
-    }));
-
-    setDeviceB(prev => ({
-      ...prev,
-      receivedOffline: prev.receivedOffline + pendingTx.payload.amount,
+      receivedOffline: (prev.receivedOffline || 0) + pendingTx.payload.amount,
     }));
 
     setTransactions(prev => [finalizedTx, ...prev]);
@@ -660,18 +630,11 @@ export function WalletProvider({ children }) {
         };
       }
 
-      // Update balances after settlement
-      setDeviceA(prev => ({
-        ...prev,
-        mainBalance: Math.max(0, prev.mainBalance - totalSyncedAmount),
-        derivedOffline: Math.max(0, prev.derivedOffline - totalSyncedAmount),
-        spentOffline: Math.max(0, prev.spentOffline - totalSyncedAmount),
-      }));
-
-      setDeviceB(prev => ({
+      // Update balances after settlement on this device (receiver gets funds credited)
+      setMyWallet(prev => ({
         ...prev,
         mainBalance: prev.mainBalance + totalSyncedAmount,
-        receivedOffline: Math.max(0, prev.receivedOffline - totalSyncedAmount),
+        receivedOffline: Math.max(0, (prev.receivedOffline || 0) - totalSyncedAmount),
       }));
 
       setLastSyncResult(syncResult);
@@ -805,36 +768,20 @@ export function WalletProvider({ children }) {
     return user;
   };
 
-  const loginAsPreset = (presetType) => {
-    if (presetType === 'pagador') {
-      setActiveDevice('device_a');
-      const user = {
-        id: 'usr_payer',
-        email: 'demo.pagador@pollar.io',
-        name: 'Pagador Demo',
-        provider: 'preset',
-        role: 'device_a',
-        publicKey: deviceA.publicKey,
-        connectedAt: Date.now()
-      };
-      setCurrentUser(user);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-      return user;
-    } else if (presetType === 'comercio') {
-      setActiveDevice('device_b');
-      const user = {
-        id: 'usr_merchant',
-        email: 'pos.tienda@pollar.io',
-        name: 'Comercio POS Demo',
-        provider: 'preset',
-        role: 'device_b',
-        publicKey: deviceB.publicKey,
-        connectedAt: Date.now()
-      };
-      setCurrentUser(user);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-      return user;
-    }
+  const loginAsPreset = (presetType = 'mi_billetera') => {
+    const pub = (isEvm ? evmWallet : stellarWallet).publicKey;
+    const user = {
+      id: 'usr_' + (pub ? pub.slice(0, 8) : 'wallet'),
+      email: 'mi.billetera@pollar.io',
+      name: 'Mi Billetera Pollar',
+      provider: 'preset',
+      role: 'device_a',
+      publicKey: pub,
+      connectedAt: Date.now()
+    };
+    setCurrentUser(user);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    return user;
   };
 
   const logout = () => {
@@ -848,56 +795,35 @@ export function WalletProvider({ children }) {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setCurrentUser(null);
 
-    const evmA = generateRealEvmKeypair();
-    const evmB = generateRealEvmKeypair();
-    const stA = generateRealStellarKeypair();
-    const stB = generateRealStellarKeypair();
+    const evm = generateRealEvmKeypair();
+    const st = generateRealStellarKeypair();
 
-    setEvmDeviceA({
-      name: 'Billetera Principal EVM (Pagador A)',
-      publicKey: evmA.address,
-      secretKey: evmA.privateKey,
-      address: evmA.address,
-      privateKey: evmA.privateKey,
+    setEvmWallet({
+      name: 'Mi Billetera EVM',
+      publicKey: evm.address,
+      secretKey: evm.privateKey,
+      address: evm.address,
+      privateKey: evm.privateKey,
       asset: 'USDC',
       mainBalance: 0.0,
       derivedOffline: 0.0,
       spentOffline: 0.0,
+      receivedOffline: 0.0,
       nativeBalance: 0.0,
       currentNonce: 0,
       network: 'evm'
     });
-    setEvmDeviceB({
-      name: 'Terminal Comercio EVM (Cobrador B)',
-      publicKey: evmB.address,
-      secretKey: evmB.privateKey,
-      address: evmB.address,
-      privateKey: evmB.privateKey,
-      asset: 'USDC',
-      mainBalance: 0.0,
-      receivedOffline: 0.0,
-      nativeBalance: 0.0,
-      network: 'evm'
-    });
 
-    setStellarDeviceA({
-      name: 'Billetera Principal (Pagador A)',
-      publicKey: stA.publicKey,
-      secretKey: stA.secretKey,
+    setStellarWallet({
+      name: 'Mi Billetera Stellar',
+      publicKey: st.publicKey,
+      secretKey: st.secretKey,
       asset: 'USDT',
       mainBalance: 100.0,
       derivedOffline: 10.0,
       spentOffline: 0.0,
-      currentNonce: 0,
-      network: 'stellar'
-    });
-    setStellarDeviceB({
-      name: 'Terminal Comercio (Cobrador B)',
-      publicKey: stB.publicKey,
-      secretKey: stB.secretKey,
-      asset: 'USDT',
-      mainBalance: 25.0,
       receivedOffline: 0.0,
+      currentNonce: 0,
       network: 'stellar'
     });
 

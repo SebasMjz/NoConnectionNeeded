@@ -27,24 +27,33 @@ import {
   Upload
 } from 'lucide-react';
 
-export default function P2PPaymentTerminal() {
+export default function P2PPaymentTerminal({ initialMode = 'pay' }) {
   const {
-    activeDevice,
+    myWallet,
     deviceA,
     deviceB,
     createOfflinePayment,
-    receiveAndCounterSign
+    receiveAndCounterSign,
+    isEvm
   } = useWallet();
 
-  const [mode, setMode] = useState(activeDevice === 'device_b' ? 'receive' : 'pay');
+  const currentAccount = myWallet || deviceA;
 
-  const [payAmount, setPayAmount] = useState('2.50');
+  const [mode, setMode] = useState(initialMode);
+
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialMode]);
+
+  const [payAmount, setPayAmount] = useState('1.00');
   const [payMemo, setPayMemo] = useState('Compra Offline');
-  const [payeeAddress, setPayeeAddress] = useState(deviceB.publicKey);
+  const [payeeAddress, setPayeeAddress] = useState('');
   const [paymentQr, setPaymentQr] = useState('');
   const [pendingTx, setPendingTx] = useState(null);
 
-  const [receiveAmount, setReceiveAmount] = useState('2.50');
+  const [receiveAmount, setReceiveAmount] = useState('1.00');
   const [receiveMemo, setReceiveMemo] = useState('Cobro Tienda');
   const [invoiceQr, setInvoiceQr] = useState('');
 
@@ -106,29 +115,22 @@ export default function P2PPaymentTerminal() {
     fileInputRef.current?.click();
   };
 
-  const availableOffline = deviceA.derivedOffline - deviceA.spentOffline;
+  const availableOffline = Math.max(0, currentAccount.derivedOffline - currentAccount.spentOffline);
   const quickAmounts = ['1.00', '2.50', '5.00', '10.00', '20.00'];
-
-  // Sync default payee when deviceB changes
-  useEffect(() => {
-    if (!payeeAddress || payeeAddress === deviceA.publicKey) {
-      setPayeeAddress(deviceB.publicKey);
-    }
-  }, [deviceB.publicKey, deviceA.publicKey]);
 
   // Generate Invoice QR in Receive Mode (Pure Black & White)
   useEffect(() => {
-    if (mode === 'receive') {
+    if (mode === 'receive' && currentAccount.publicKey) {
       generateQrDataUrl({
         type: 'POLLAR_INVOICE',
-        payee: deviceB.publicKey,
+        payee: currentAccount.publicKey,
         amount: parseFloat(receiveAmount) || 0,
-        asset: deviceB.asset,
+        asset: currentAccount.asset,
         memo: receiveMemo,
         timestamp: Date.now(),
       }).then(setInvoiceQr);
     }
-  }, [mode, receiveAmount, receiveMemo, deviceB.publicKey, deviceB.asset]);
+  }, [mode, receiveAmount, receiveMemo, currentAccount.publicKey, currentAccount.asset]);
 
   // Generate Payment QR when signed (Pure Black & White)
   useEffect(() => {
@@ -536,7 +538,7 @@ export default function P2PPaymentTerminal() {
             transition: 'all 0.2s ease'
           }}
         >
-          <Send size={16} /> Enviar Pago (A)
+          <Send size={16} /> Pagar
         </button>
         <button
           onClick={() => { setMode('receive'); setFeedback({ type: '', message: '' }); stopCamera(); }}
@@ -556,7 +558,7 @@ export default function P2PPaymentTerminal() {
             transition: 'all 0.2s ease'
           }}
         >
-          <ArrowDownLeft size={16} /> Terminal Cobrar (B)
+          <ArrowDownLeft size={16} /> Cobrar
         </button>
       </div>
 
@@ -713,7 +715,7 @@ export default function P2PPaymentTerminal() {
       )}
 
       {/* ========================================================
-          SEND MODE (Payer / Device A)
+          SEND MODE (Payer)
           ======================================================== */}
       {mode === 'pay' && (
         <div className="pollar-panel">
@@ -722,11 +724,11 @@ export default function P2PPaymentTerminal() {
             <div>
               <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Transferir a Destinatario</h3>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                Disponible en Bóveda: <strong style={{ color: 'var(--pollar-blue)' }}>{availableOffline.toFixed(2)} {deviceA.asset}</strong>
+                Disponible en Bóveda: <strong style={{ color: 'var(--pollar-blue)' }}>{availableOffline.toFixed(2)} {currentAccount.asset}</strong>
               </p>
             </div>
             <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
-              Nonce #{deviceA.currentNonce + 1}
+              Nonce #{currentAccount.currentNonce + 1}
             </span>
           </div>
 
@@ -783,14 +785,16 @@ export default function P2PPaymentTerminal() {
             
             {/* Recipient Address */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Dirección de Destino (Stellar G...)</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
+                Dirección de Destino ({isEvm ? 'EVM 0x...' : 'Stellar G...'})
+              </label>
               <input
                 type="text"
                 value={payeeAddress}
                 onChange={(e) => setPayeeAddress(e.target.value)}
                 className="pollar-input"
                 style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
-                placeholder="G..."
+                placeholder={isEvm ? '0x... o escanear QR de cobro' : 'G... o escanear QR de cobro'}
                 required
               />
             </div>
@@ -802,7 +806,7 @@ export default function P2PPaymentTerminal() {
                 <span style={{ fontSize: 40, fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-1px', lineHeight: 1 }}>
                   ${payAmount || '0'}
                 </span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>{deviceA.asset}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>{currentAccount.asset}</span>
               </div>
             </div>
 
@@ -1090,7 +1094,7 @@ export default function P2PPaymentTerminal() {
               />
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>
-                  ${receiveAmount} {deviceB.asset}
+                  ${receiveAmount} {currentAccount.asset}
                 </span>
                 <p style={{ fontSize: 12, color: 'var(--pollar-blue)', fontWeight: 700, marginTop: 2 }}>
                   Factura lista para escanear o enviar por WhatsApp
@@ -1101,7 +1105,7 @@ export default function P2PPaymentTerminal() {
               <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 280, marginTop: 2 }}>
                 <button
                   type="button"
-                  onClick={() => downloadQrImage(invoiceQr, `pollar_factura_${receiveAmount}_${deviceB.asset}.png`)}
+                  onClick={() => downloadQrImage(invoiceQr, `pollar_factura_${receiveAmount}_${currentAccount.asset}.png`)}
                   style={{
                     flex: 1,
                     padding: '9px 12px',
@@ -1124,8 +1128,8 @@ export default function P2PPaymentTerminal() {
                   type="button"
                   onClick={() => shareQrToWhatsApp({
                     dataUrl: invoiceQr,
-                    title: `Factura de Cobro Pollar: $${receiveAmount} ${deviceB.asset}`,
-                    text: `Factura de Cobro Pollar:\nMonto: $${receiveAmount} ${deviceB.asset}\nConcepto: ${receiveMemo || 'Cobro'}\nDestino: ${deviceB.publicKey.slice(0, 8)}...`,
+                    title: `Factura de Cobro Pollar: $${receiveAmount} ${currentAccount.asset}`,
+                    text: `Factura de Cobro Pollar:\nMonto: $${receiveAmount} ${currentAccount.asset}\nConcepto: ${receiveMemo || 'Cobro'}\nDestino: ${currentAccount.publicKey.slice(0, 8)}...`,
                     filename: `pollar_factura_${receiveAmount}.png`
                   })}
                   style={{

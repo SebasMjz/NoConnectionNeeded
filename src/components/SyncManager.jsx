@@ -28,9 +28,8 @@ export default function SyncManager() {
     lastSyncResult,
     isEvm,
     activeEvmChain,
-    activeDevice,
+    myWallet,
     deviceA,
-    deviceB,
     refreshOnlineBalance
   } = useWallet();
 
@@ -43,9 +42,9 @@ export default function SyncManager() {
   const currentEvmNetwork = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
   const targetNetworkName = isEvm ? currentEvmNetwork.name : 'Stellar Testnet';
 
-  const submitterAccount = activeDevice === 'device_b' ? deviceB : deviceA;
-  const submitterRole = activeDevice === 'device_b' ? 'Dispositivo B (Comercio)' : 'Dispositivo A (Pagador)';
-  const submitterGas = isEvm ? (submitterAccount.nativeBalance || 0) : 0;
+  const submitterAccount = myWallet || deviceA;
+  const submitterRole = 'Mi Billetera Pollar';
+  const submitterGas = isEvm ? (submitterAccount?.nativeBalance || 0) : 0;
 
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
   const syncedTxs = transactions.filter(t => t.status === 'SYNCED_ONCHAIN');

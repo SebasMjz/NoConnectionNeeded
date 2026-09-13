@@ -289,47 +289,28 @@ export default function AuthGateway({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* Quick Access Preset Chips */}
+        {/* Quick Access */}
         <div style={{ paddingTop: 16, borderTop: '1px solid #F1F5F9', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-light)', textAlign: 'center' }}>
-            Acceso Rápido
-          </span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <button
-              onClick={() => {
-                loginAsPreset('pagador');
-                if (onLoginSuccess) onLoginSuccess();
-              }}
-              style={{
-                padding: '12px 14px',
-                borderRadius: 16,
-                background: 'var(--pollar-blue-light)',
-                border: '1px solid rgba(0, 98, 255, 0.15)',
-                textAlign: 'left',
-                cursor: 'pointer'
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)', display: 'block' }}>⚡ Pagador</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>pagador@pollar.io</span>
-            </button>
-            <button
-              onClick={() => {
-                loginAsPreset('comercio');
-                if (onLoginSuccess) onLoginSuccess();
-              }}
-              style={{
-                padding: '12px 14px',
-                borderRadius: 16,
-                background: 'var(--color-emerald-bg)',
-                border: '1px solid rgba(16, 185, 129, 0.2)',
-                textAlign: 'left',
-                cursor: 'pointer'
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)', display: 'block' }}>🏪 Comercio POS</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>comercio@pollar.io</span>
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              loginAsPreset('mi_billetera');
+              if (onLoginSuccess) onLoginSuccess();
+            }}
+            style={{
+              padding: '14px 18px',
+              borderRadius: 18,
+              background: 'var(--pollar-blue-light)',
+              border: '1.5px solid rgba(0, 98, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              cursor: 'pointer'
+            }}
+          >
+            <Sparkles size={18} color="var(--pollar-blue)" />
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>⚡ Ingresar a Mi Billetera Directa</span>
+          </button>
         </div>
 
         {/* Footer */}

@@ -19,28 +19,25 @@ import {
   RotateCcw,
   LogOut,
   Sparkles,
-  Zap,
-  ArrowRightLeft,
   X
 } from 'lucide-react';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
+  const [terminalMode, setTerminalMode] = useState('pay');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const { 
     currentUser, 
     logout,
-    activeDevice, 
-    setActiveDevice, 
     isOnline, 
     isSimulatingOffline,
     setIsSimulatingOffline,
     transactions, 
     resetDemoData,
+    myWallet,
     deviceA,
-    deviceB,
     requestFriendbotFunding
   } = useWallet();
 
@@ -49,7 +46,7 @@ function AppContent() {
     return <AuthGateway onLoginSuccess={() => setActiveTab('home')} />;
   }
 
-  const currentAccount = activeDevice === 'device_b' ? deviceB : deviceA;
+  const currentAccount = myWallet || deviceA;
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
 
   const tabs = [
@@ -111,10 +108,10 @@ function AppContent() {
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </button>
 
-          <button
+          <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="pollar-icon-btn"
-            title="Configuración y Perfil"
+            className="pollar-user-avatar-btn"
+            title="Ajustes y Perfil"
           >
             {currentUser.avatar ? (
               <img 
@@ -129,33 +126,18 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Role Switcher Pill */}
-      <div className="pollar-role-bar">
-        <div className="pollar-role-container">
-          <button
-            onClick={() => setActiveDevice('device_a')}
-            className={`pollar-role-tab ${activeDevice === 'device_a' ? 'active-payer' : ''}`}
-          >
-            <Zap size={15} /> Pagador (A)
-          </button>
-          <button
-            onClick={() => setActiveDevice('device_b')}
-            className={`pollar-role-tab ${activeDevice === 'device_b' ? 'active-merchant' : ''}`}
-          >
-            <ArrowRightLeft size={15} /> Comercio POS (B)
-          </button>
-        </div>
-      </div>
-
       {/* Main Content Area with Bottom Clearance */}
       <main className="pollar-main-content">
         {activeTab === 'home' && (
           <WalletVault 
-            onNavigate={(tab) => setActiveTab(tab)} 
+            onNavigate={(tab, mode) => {
+              if (mode) setTerminalMode(mode);
+              setActiveTab(tab);
+            }} 
             onOpenLinkModal={() => setIsLinkModalOpen(true)} 
           />
         )}
-        {activeTab === 'send' && <P2PPaymentTerminal />}
+        {activeTab === 'send' && <P2PPaymentTerminal initialMode={terminalMode} />}
         {activeTab === 'sync' && <SyncManager />}
         {activeTab === 'lab' && <DualDeviceSimulator />}
 
