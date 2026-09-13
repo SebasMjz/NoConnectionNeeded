@@ -35,6 +35,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     openSendModal,
     isOnline,
     changeSelectedAsset,
+    isMainnet,
   } = useWallet();
 
   const [mode, setMode] = useState('pay'); // 'pay' | 'receive'
@@ -313,7 +314,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         color: isOnline ? 'var(--color-emerald)' : 'var(--color-rose)'
       }}>
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: isOnline ? 'var(--color-emerald)' : 'var(--color-rose)' }} />
-        {isOnline ? 'Online — Conectado a Stellar Testnet' : 'Offline — Modo sin conexión activo'}
+        {isOnline ? `Online — Conectado a Stellar ${isMainnet ? 'Mainnet' : 'Testnet'}` : 'Offline — Modo sin conexión activo'}
       </div>
 
       {/* Mode Tabs */}

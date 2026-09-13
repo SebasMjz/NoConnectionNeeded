@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, Check, Coins, Sparkles, ExternalLink, X } from 'lucide-react';
+import { isMainnet } from '../services/stellarCrypto';
 
 export const SUPPORTED_ASSETS = [
   {
@@ -154,7 +155,7 @@ export default function CryptoSelector({
                 </div>
                 <div>
                   <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)' }}>Seleccionar Criptomoneda</h3>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Saldos on-chain legítimos en Stellar Testnet</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Saldos on-chain legítimos en Stellar {isMainnet ? 'Mainnet' : 'Testnet'}</p>
                 </div>
               </div>
               <button

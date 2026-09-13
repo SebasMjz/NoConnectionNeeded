@@ -21,15 +21,17 @@ import {
 } from 'lucide-react';
 
 // ─── Pollar SDK config ──────────────────────────────────────────────────────
+const IS_MAINNET = (import.meta.env.VITE_STELLAR_NETWORK || '').toLowerCase() === 'mainnet' || (import.meta.env.VITE_STELLAR_NETWORK || '').toLowerCase() === 'public';
+
 const POLLAR_PUBLISHABLE_KEY =
   import.meta.env.VITE_POLLAR_PUBLISHABLE_KEY ||
   import.meta.env.VITE_POLLAR_API_KEY ||
-  'pub_testnet_2586cc5061cc4250e34cc3e19a47fb53';
+  (IS_MAINNET ? 'pub_mainnet_5271b5fe74e59b646cc25c5bfa0d14e0' : 'pub_testnet_2586cc5061cc4250e34cc3e19a47fb53');
 
 const POLLAR_APP_CONFIG = {
   application: {
     name: 'Pollar Pay',
-    network: 'testnet',
+    network: IS_MAINNET ? 'mainnet' : 'testnet',
     chains: ['stellar'],
   },
   styles: {
@@ -239,8 +241,8 @@ function AppContent() {
               <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--pollar-blue)', letterSpacing: '-0.2px' }}>
                 pollar pay
               </span>
-              <span style={{ fontSize: 9, fontWeight: 800, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
-                TESTNET
+              <span style={{ fontSize: 9, fontWeight: 800, background: IS_MAINNET ? 'rgba(16,185,129,0.12)' : 'var(--pollar-blue-light)', color: IS_MAINNET ? '#059669' : 'var(--pollar-blue)', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
+                {IS_MAINNET ? 'MAINNET' : 'TESTNET'}
               </span>
             </div>
           </div>
@@ -348,7 +350,7 @@ export default function App() {
     <PollarProvider
       client={{
         apiKey: POLLAR_PUBLISHABLE_KEY,
-        stellarNetwork: 'testnet',
+        stellarNetwork: IS_MAINNET ? 'mainnet' : 'testnet',
       }}
       appConfig={POLLAR_APP_CONFIG}
     >

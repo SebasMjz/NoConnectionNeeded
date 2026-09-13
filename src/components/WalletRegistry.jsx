@@ -35,6 +35,7 @@ export default function WalletRegistry({ onClose = null, embedded = false }) {
     selectActiveWallet,
     refreshOnlineBalance,
     isRefreshingBalance,
+    isMainnet,
   } = useWallet();
 
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'create' | 'import'
@@ -357,7 +358,7 @@ export default function WalletRegistry({ onClose = null, embedded = false }) {
             <>
               <div style={{ padding: 16, borderRadius: 18, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0,98,255,0.2)' }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--pollar-blue)' }}>
-                  Se generará un par de claves Ed25519 nuevo en Stellar Testnet.
+                  Se generará un par de claves Ed25519 nuevo en Stellar {isMainnet ? 'Mainnet' : 'Testnet'}.
                 </p>
               </div>
               <div>

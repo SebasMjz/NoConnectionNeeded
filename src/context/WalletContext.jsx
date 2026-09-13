@@ -8,7 +8,10 @@ import {
   counterSignPaymentReceipt,
   verifyPayeeCounterSignature,
   buildRealMerkleTree,
-  computeMerkleLeafHash
+  computeMerkleLeafHash,
+  isMainnet,
+  DEFAULT_HORIZON_URL,
+  DEFAULT_EXPLORER_NETWORK
 } from '../services/stellarCrypto';
 import { getBiometricService } from '../services/BiometricService';
 import confetti from 'canvas-confetti';
@@ -286,7 +289,7 @@ export function WalletProvider({ children }) {
     setIsRefreshingBalance(true);
     try {
       const { fetchRealAccountBalances } = await import('../services/stellarCrypto');
-      const horizonUrl = import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+      const horizonUrl = import.meta.env.VITE_HORIZON_URL || DEFAULT_HORIZON_URL;
       const res = await fetchRealAccountBalances(pubKey, horizonUrl);
 
       // Check if Pollar SDK provides any balance records
@@ -807,7 +810,7 @@ export function WalletProvider({ children }) {
         totalAmount: totalSyncedAmount,
         asset: syncAsset,
         timestamp: Date.now(),
-        stellarExpertUrl: `https://stellar.expert/explorer/testnet/tx/${realTxResult.hash}`,
+        stellarExpertUrl: `https://stellar.expert/explorer/${DEFAULT_EXPLORER_NETWORK}/tx/${realTxResult.hash}`,
       };
 
       setLastSyncResult(result);
@@ -915,7 +918,7 @@ export function WalletProvider({ children }) {
       hash: txHash,
       amount: formattedAmount,
       asset: payAsset,
-      stellarExpertUrl: `https://stellar.expert/explorer/testnet/tx/${txHash}`,
+      stellarExpertUrl: `https://stellar.expert/explorer/${DEFAULT_EXPLORER_NETWORK}/tx/${txHash}`,
     };
   };
 
@@ -1115,6 +1118,8 @@ export function WalletProvider({ children }) {
 
       // Misc
       resetDemoData,
+      isMainnet,
+      stellarNetwork: isMainnet ? 'mainnet' : 'testnet',
     }}>
       {children}
     </WalletContext.Provider>

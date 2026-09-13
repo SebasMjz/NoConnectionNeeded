@@ -25,7 +25,8 @@ export default function SyncManager() {
     syncToStellarNetwork, 
     isSyncing, 
     lastSyncResult,
-    activeWallet
+    activeWallet,
+    isMainnet
   } = useWallet();
 
   const [feedback, setFeedback] = useState({ type: '', message: '' });
@@ -41,7 +42,7 @@ export default function SyncManager() {
     setFeedback({ type: '', message: '' });
     try {
       const res = await syncToStellarNetwork();
-      setFeedback({ type: 'success', message: `Lote sincronizado con éxito en Stellar Ledger #${res.stellarLedger || 'Testnet'}` });
+      setFeedback({ type: 'success', message: `Lote sincronizado con éxito en Stellar Ledger #${res.stellarLedger || (isMainnet ? 'Mainnet' : 'Testnet')}` });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al sincronizar lote en Stellar' });
     }
@@ -93,7 +94,7 @@ export default function SyncManager() {
             {syncedTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-emerald)' }}>
-            En Stellar Testnet
+            En Stellar {isMainnet ? 'Mainnet' : 'Testnet'}
           </span>
         </div>
 

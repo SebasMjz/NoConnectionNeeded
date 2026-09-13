@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
-  const { activeWallet, loginWithWallet, linkCustomAccount, requestFriendbotFunding } = useWallet();
+  const { activeWallet, loginWithWallet, linkCustomAccount, requestFriendbotFunding, isMainnet } = useWallet();
   const [activeTab, setActiveTab] = useState('connect');
   const [manualKey, setManualKey] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
@@ -48,8 +48,12 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
         const newKeys = generateRealStellarKeypair();
         await linkCustomAccount(newKeys.publicKey, 'Billetera Stellar');
         await loginWithWallet(newKeys.publicKey);
-        requestFriendbotFunding(newKeys.publicKey);
-        setFeedback({ type: 'success', message: 'Billetera creada y fondeada en Testnet (+10k XLM)' });
+        if (!isMainnet) {
+          requestFriendbotFunding(newKeys.publicKey);
+          setFeedback({ type: 'success', message: 'Billetera creada y fondeada en Testnet (+10k XLM)' });
+        } else {
+          setFeedback({ type: 'success', message: 'Billetera creada en Stellar Mainnet. Fondea tu cuenta con XLM para activarla.' });
+        }
       }
 
       setTimeout(() => {
@@ -218,9 +222,11 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
               <Sparkles className="w-7 h-7" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-900">Generar Billetera Stellar Testnet</h4>
+              <h4 className="text-sm font-bold text-slate-900">Generar Billetera Stellar {isMainnet ? 'Mainnet' : 'Testnet'}</h4>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                Crea llaves Ed25519 con fondeo automático de 10,000 XLM de Friendbot listo para operar offline.
+                {isMainnet
+                  ? 'Crea un par de llaves Ed25519 nuevo para operar en Stellar Mainnet de forma segura.'
+                  : 'Crea llaves Ed25519 con fondeo automático de 10,000 XLM de Friendbot listo para operar offline.'}
               </p>
             </div>
 

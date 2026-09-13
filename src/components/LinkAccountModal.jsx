@@ -22,7 +22,8 @@ export default function LinkAccountModal({ isOpen, onClose }) {
     linkCustomAccount,
     refreshOnlineBalance,
     requestFriendbotFunding,
-    isRefreshingBalance
+    isRefreshingBalance,
+    isMainnet
   } = useWallet();
 
   const [inputKey, setInputKey] = useState('');
@@ -50,6 +51,7 @@ export default function LinkAccountModal({ isOpen, onClose }) {
   };
 
   const handleFund = async () => {
+    if (isMainnet) return;
     setIsFunding(true);
     setFeedback({ type: '', message: '' });
     try {
@@ -71,11 +73,18 @@ export default function LinkAccountModal({ isOpen, onClose }) {
     try {
       const newKeys = generateRealStellarKeypair();
       const res = await linkCustomAccount(newKeys.secretKey);
-      await requestFriendbotFunding(newKeys.publicKey);
-      setFeedback({
-        type: 'success',
-        message: `Nueva cuenta generada y fondeada con +10,000 XLM`
-      });
+      if (!isMainnet) {
+        await requestFriendbotFunding(newKeys.publicKey);
+        setFeedback({
+          type: 'success',
+          message: `Nueva cuenta generada y fondeada con +10,000 XLM (Testnet)`
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          message: `Nueva cuenta Stellar generada. Fondea tu dirección pública con XLM para activarla en Mainnet.`
+        });
+      }
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
     } finally {
@@ -105,7 +114,7 @@ export default function LinkAccountModal({ isOpen, onClose }) {
             </div>
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Vincular Cuenta Stellar</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stellar Horizon Testnet / Soroban</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stellar Horizon {isMainnet ? 'Mainnet' : 'Testnet'} / Soroban</p>
             </div>
           </div>
           <button onClick={onClose} className="pollar-icon-btn">
@@ -185,38 +194,41 @@ export default function LinkAccountModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          {/* Fondeo Friendbot Button */}
-          <button
-            onClick={handleFund}
-            disabled={isFunding}
-            style={{
-              width: '100%',
-              padding: '12px 16px',
-              borderRadius: 14,
-              background: 'var(--color-amber-bg)',
-              border: '1.5px solid rgba(245, 158, 11, 0.3)',
-              color: '#B45309',
-              fontSize: 13,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {isFunding ? (
-              <>
-                <RefreshCw size={16} className="animate-spin" />
-                Solicitando a Friendbot (+10,000 XLM)...
-              </>
-            ) : (
-              <>
-                <Sparkles size={16} color="#D97706" />
-                Fondeo Friendbot (+10,000 XLM Testnet)
-              </>
-            )}
-          </button>
+          {/* Fondeo Friendbot */}
+          {!isMainnet && (
+            <button
+              type="button"
+              onClick={handleFund}
+              disabled={isFunding}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: 14,
+                background: 'var(--color-amber-bg)',
+                border: '1.5px solid rgba(245, 158, 11, 0.3)',
+                color: '#B45309',
+                fontSize: 13,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isFunding ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Solicitando a Friendbot (+10,000 XLM)...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} color="#D97706" />
+                  Fondeo Friendbot (+10,000 XLM Testnet)
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Link / Import Form */}

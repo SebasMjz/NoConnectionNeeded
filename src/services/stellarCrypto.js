@@ -1,6 +1,10 @@
 import { Keypair } from '@stellar/stellar-sdk';
 import QRCode from 'qrcode';
 
+export const isMainnet = (import.meta.env.VITE_STELLAR_NETWORK || '').toLowerCase() === 'mainnet' || (import.meta.env.VITE_STELLAR_NETWORK || '').toLowerCase() === 'public';
+export const DEFAULT_HORIZON_URL = import.meta.env.VITE_HORIZON_URL || (isMainnet ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org');
+export const DEFAULT_EXPLORER_NETWORK = isMainnet ? 'public' : 'testnet';
+
 // Pure JS SHA-256 fallback for non-secure contexts (crypto.subtle unavailable)
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -125,7 +129,7 @@ export function importStellarAccount(inputKey) {
 /**
  * Fetches real on-chain account balances from Stellar Horizon
  */
-export async function fetchRealAccountBalances(publicKey, horizonUrl = 'https://horizon-testnet.stellar.org') {
+export async function fetchRealAccountBalances(publicKey, horizonUrl = DEFAULT_HORIZON_URL) {
   try {
     const { Horizon } = await import('@stellar/stellar-sdk');
     const server = new Horizon.Server(horizonUrl);
@@ -526,14 +530,14 @@ export async function loadOrCreateAccount(server, publicKey) {
     return await server.loadAccount(publicKey);
   } catch (err) {
     if (err.name === 'NotFoundError' || err.status === 404 || (err.response && err.response.status === 404)) {
-      throw new Error(`La cuenta ${publicKey} no existe en Stellar Testnet. Fondea la cuenta con Friendbot primero.`);
+      throw new Error(`La cuenta ${publicKey} no existe en Stellar (${isMainnet ? 'Mainnet' : 'Testnet'}). ${isMainnet ? 'Fondea tu cuenta con XLM para activarla.' : 'Fondea la cuenta con Friendbot primero.'}`);
     }
     throw err;
   }
 }
 
 /**
- * Submits a real batch settlement transaction to Stellar Horizon Testnet
+ * Submits a real batch settlement transaction to Stellar Horizon (Mainnet or Testnet)
  */
 export async function submitRealStellarBatchTransaction({
   payerSecretKey,
@@ -543,10 +547,11 @@ export async function submitRealStellarBatchTransaction({
   assetCode = 'XLM',
   assetIssuer = '',
   merkleRootHash,
-  horizonUrl = 'https://horizon-testnet.stellar.org'
+  horizonUrl = DEFAULT_HORIZON_URL
 }) {
   const { Horizon, TransactionBuilder, Operation, Asset, Memo, Networks, Keypair } = await import('@stellar/stellar-sdk');
   const server = new Horizon.Server(horizonUrl);
+  const netLabel = isMainnet ? 'Mainnet' : 'Testnet';
 
   const numAmount = parseFloat(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
@@ -557,7 +562,7 @@ export async function submitRealStellarBatchTransaction({
   }
   const txAmount = numAmount.toFixed(7);
 
-  console.log('[Stellar Testnet] Cargando cuenta pagadora:', payerPublicKey);
+  console.log(`[Stellar ${netLabel}] Cargando cuenta pagadora:`, payerPublicKey);
   const sourceAccount = await loadOrCreateAccount(server, payerPublicKey);
 
   // Determine asset
@@ -584,11 +589,11 @@ export async function submitRealStellarBatchTransaction({
   );
   const payerBalance = payerBalanceObj ? parseFloat(payerBalanceObj.balance) : 0;
   if (payerBalance < numAmount) {
-    throw new Error(`Saldo insuficiente en Stellar Testnet: Tienes ${payerBalance.toFixed(7)} ${assetCode} y requieres transferir ${txAmount} ${assetCode}.`);
+    throw new Error(`Saldo insuficiente en Stellar ${netLabel}: Tienes ${payerBalance.toFixed(7)} ${assetCode} y requieres transferir ${txAmount} ${assetCode}.`);
   }
 
   // Check destination account
-  console.log('[Stellar Testnet] Verificando cuenta receptora:', payeePublicKey);
+  console.log(`[Stellar ${netLabel}] Verificando cuenta receptora:`, payeePublicKey);
   let payeeExists = true;
   try {
     await server.loadAccount(payeePublicKey);
@@ -612,13 +617,13 @@ export async function submitRealStellarBatchTransaction({
 
   const txBuilder = new TransactionBuilder(sourceAccount, {
     fee: '100',
-    networkPassphrase: Networks.TESTNET
+    networkPassphrase: isMainnet ? Networks.PUBLIC : Networks.TESTNET
   });
 
   if (!payeeExists) {
     if (isNative) {
       if (numAmount < 1.0) {
-        throw new Error(`La cuenta receptora no está inicializada en Stellar y el monto (${txAmount} XLM) es inferior al mínimo requerido para activarla (1.0 XLM).`);
+        throw new Error(`La cuenta receptora no está inicializada en Stellar ${netLabel} y el monto (${txAmount} XLM) es inferior al mínimo requerido para activarla (1.0 XLM).`);
       }
       txBuilder.addOperation(
         Operation.createAccount({
@@ -627,7 +632,7 @@ export async function submitRealStellarBatchTransaction({
         })
       );
     } else {
-      throw new Error(`La cuenta receptora no existe en Stellar y no puede recibir tokens ${assetCode} sin antes haber sido creada y haber establecido una línea de confianza (trustline).`);
+      throw new Error(`La cuenta receptora no existe en Stellar ${netLabel} y no puede recibir tokens ${assetCode} sin antes haber sido creada y haber establecido una línea de confianza (trustline).`);
     }
   } else {
     txBuilder.addOperation(
@@ -648,9 +653,9 @@ export async function submitRealStellarBatchTransaction({
   const kp = Keypair.fromSecret(payerSecretKey);
   transaction.sign(kp);
 
-  console.log('[Stellar Testnet] Transmitiendo a Horizon Testnet...');
+  console.log(`[Stellar ${netLabel}] Transmitiendo a Horizon...`);
   const result = await server.submitTransaction(transaction);
-  console.log('[Stellar Testnet] ¡Transacción confirmada en Horizon!', result.hash);
+  console.log(`[Stellar ${netLabel}] ¡Transacción confirmada en Horizon!`, result.hash);
 
   return {
     success: true,
@@ -659,6 +664,6 @@ export async function submitRealStellarBatchTransaction({
     amount: txAmount,
     asset: assetCode,
     merkleRoot: merkleRootHash,
-    stellarExpertUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`
+    stellarExpertUrl: `https://stellar.expert/explorer/${DEFAULT_EXPLORER_NETWORK}/tx/${result.hash}`
   };
 }

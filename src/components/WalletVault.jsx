@@ -31,6 +31,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     changeSelectedAsset,
     selectActiveWallet,
     openSendModal,
+    isMainnet,
   } = useWallet();
 
   const [transferAmount, setTransferAmount] = useState('');
@@ -222,13 +223,6 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
             <span className="pollar-action-label">Bóveda</span>
           </button>
-
-          <button onClick={handleFundFriendbot} disabled={isFunding} className="pollar-action-btn">
-            <div className="pollar-action-icon-circle" style={{ color: 'var(--color-amber)' }}>
-              {isFunding ? <RefreshCw size={20} className="animate-spin" /> : <Sparkles size={20} />}
-            </div>
-            <span className="pollar-action-label">+10k XLM</span>
-          </button>
         </div>
       </div>
 
@@ -414,22 +408,40 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   <span>Sin saldo libre en Billetera Principal (0.00 {activeWallet.asset || 'XLM'})</span>
                 </div>
                 <p style={{ fontSize: 11, color: '#B45309', margin: 0, lineHeight: 1.4 }}>
-                  Para asignar saldo a tu bóveda offline, primero necesitas fondos en Stellar Testnet.
+                  {isMainnet
+                    ? 'Para asignar saldo a tu bóveda offline, primero necesitas transferir fondos a tu dirección pública en Stellar Mainnet.'
+                    : 'Para asignar saldo a tu bóveda offline, primero necesitas fondos en Stellar Testnet.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={handleFundFriendbot}
-                  disabled={isFunding}
-                  style={{
-                    padding: '8px 12px', borderRadius: 10,
-                    background: '#D97706', color: '#FFFFFF',
-                    fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-                  }}
-                >
-                  {isFunding ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  Recargar 10,000 XLM Gratis (Friendbot Testnet)
-                </button>
+                {isMainnet ? (
+                  <button
+                    type="button"
+                    onClick={copyAddress}
+                    style={{
+                      padding: '8px 12px', borderRadius: 10,
+                      background: '#059669', color: '#FFFFFF',
+                      fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                    }}
+                  >
+                    <Copy size={14} />
+                    {copiedAddress ? '¡Dirección Copiada!' : 'Copiar Dirección Stellar Mainnet'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleFundFriendbot}
+                    disabled={isFunding}
+                    style={{
+                      padding: '8px 12px', borderRadius: 10,
+                      background: '#D97706', color: '#FFFFFF',
+                      fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                    }}
+                  >
+                    {isFunding ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Recargar 10,000 XLM Gratis (Friendbot Testnet)
+                  </button>
+                )}
               </div>
             )}
 

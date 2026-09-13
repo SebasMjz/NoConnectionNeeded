@@ -74,17 +74,12 @@ export default function FloatingDemoHelper({ onFillEmail, onSelectWallet }) {
 
           <div className="flex gap-2 pt-2 border-t border-slate-100">
             <button
-              onClick={() => requestFriendbotFunding(deviceA.publicKey)}
-              className="flex-1 py-2 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-bold flex items-center justify-center gap-1 transition-all"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-500" /> +10k XLM
-            </button>
-            <button
               onClick={() => resetDemoData()}
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold flex items-center gap-1 transition-all"
+              className="w-full py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
               title="Reiniciar Demo"
             >
               <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reiniciar Datos Locales</span>
             </button>
           </div>
         </div>

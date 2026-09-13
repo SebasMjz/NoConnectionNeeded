@@ -26,7 +26,8 @@ export default function Header({ onOpenLinkModal, onOpenAndroidModal }) {
     deviceB,
     refreshOnlineBalance,
     isRefreshingBalance,
-    transactions
+    transactions,
+    isMainnet
   } = useWallet();
 
   const [copiedKey, setCopiedKey] = React.useState(false);
@@ -47,8 +48,12 @@ export default function Header({ onOpenLinkModal, onOpenAndroidModal }) {
           <span className="font-extrabold tracking-tight text-white flex items-center gap-1">
             <Zap className="w-3.5 h-3.5 text-[#00f2fe]" /> POLLAR PAY
           </span>
-          <span className="px-1.5 py-0.2 rounded bg-[rgba(0,242,254,0.12)] text-[#00f2fe] font-mono font-bold text-[10px]">
-            TESTNET
+          <span className={`px-1.5 py-0.2 rounded font-mono font-bold text-[10px] ${
+            isMainnet
+              ? 'bg-[rgba(16,185,129,0.15)] text-[#10b981]'
+              : 'bg-[rgba(0,242,254,0.12)] text-[#00f2fe]'
+          }`}>
+            {isMainnet ? 'MAINNET' : 'TESTNET'}
           </span>
         </div>
 

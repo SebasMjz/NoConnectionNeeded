@@ -359,10 +359,10 @@ button {
   background: rgba(0, 0, 0, 0.3);
 }
 
-/* 4 Action Buttons */
+/* 3 Action Buttons */
 .pollar-card-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   padding-top: 4px;
 }

@@ -1,8 +1,7 @@
 # Pollar SDK & Stellar Network Configuration
-VITE_POLLAR_API_KEY=pub_testnet_32b622985a9df96e23c0664b199b8ebc
+VITE_POLLAR_API_KEY=pub_mainnet_5271b5fe74e59b646cc25c5bfa0d14e0
 VITE_POLLAR_GATEWAY_URL=https://api.pollar.io/v1
-VITE_STELLAR_NETWORK=testnet
-VITE_HORIZON_URL=https://horizon-testnet.stellar.org
-VITE_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-VITE_POLLAR_PUBLISHABLE_KEY=pub_testnet_2586cc5061cc4250e34cc3e19a47fb53
-
+VITE_STELLAR_NETWORK=mainnet
+VITE_HORIZON_URL=https://horizon.stellar.org
+VITE_SOROBAN_RPC_URL=https://mainnet.sorobanrpc.com
+VITE_POLLAR_PUBLISHABLE_KEY=pub_mainnet_5271b5fe74e59b646cc25c5bfa0d14e0
