@@ -32,7 +32,7 @@ export const EVM_NETWORKS = {
     id: 'hskTestnet',
     name: 'HashKey Chain Testnet',
     chainId: 133,
-    rpcUrl: 'https://hashkeychain-testnet.alt.technology',
+    rpcUrl: 'https://testnet.hsk.xyz',
     blockExplorer: 'https://hashkeychain-testnet-explorer.alt.technology',
     faucetUrl: 'https://faucet.hashkey.com',
     symbol: 'HSK',
