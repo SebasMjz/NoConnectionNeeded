@@ -14,50 +14,78 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// CONFIGURATION & CREDENTIALS (from .env)
+// CONFIGURATION
 // ==========================================
 const PORT = process.env.PORT || 3001;
+const NETWORK = process.env.NETWORK || 'hskTestnet';
 
-// Relayer Private Key provided by user
-const rawPrivateKey = process.env.RELAYER_PRIVATE_KEY || process.env.PRIVATE_KEY || 
-  '17fed97929778ff2a7e25581fe14be499d713a4bf7c74de75e69c84b0c83b09c';
+// Network configs
+const NETWORKS = {
+  hskTestnet: {
+    name: 'HashKey Chain Testnet',
+    chainId: 133,
+    rpcUrls: [
+      'https://hashkeychain-testnet.alt.technology',
+      'https://testnet.hsk.xyz',
+    ],
+    blockExplorer: 'https://hashkeychain-testnet-explorer.alt.technology',
+    usdcAddress: process.env.USDC_ADDRESS || '',
+  },
+  hskMainnet: {
+    name: 'HashKey Chain Mainnet',
+    chainId: 177,
+    rpcUrls: [
+      'https://mainnet.hsk.xyz',
+      'https://hsk.rpc.chain.com',
+    ],
+    blockExplorer: 'https://explorer.hsk.xyz',
+    usdcAddress: process.env.USDC_ADDRESS || '0x8845E8C74cE5dF8E0d37bf0fe57dc5E0ddD8021b',
+  },
+  sepolia: {
+    name: 'Ethereum Sepolia',
+    chainId: 11155111,
+    rpcUrls: [
+      'https://rpc.sepolia.org',
+      'https://ethereum-sepolia-rpc.publicnode.com',
+    ],
+    blockExplorer: 'https://sepolia.etherscan.io',
+    usdcAddress: process.env.USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+  },
+};
+
+const networkConfig = NETWORKS[NETWORK] || NETWORKS.hskTestnet;
+
+// Relayer key
+const rawPrivateKey = process.env.RELAYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
+if (!rawPrivateKey) {
+  console.error('[FATAL] RELAYER_PRIVATE_KEY or PRIVATE_KEY env var required');
+  process.exit(1);
+}
 const RELAYER_PRIVATE_KEY = rawPrivateKey.startsWith('0x') ? rawPrivateKey : `0x${rawPrivateKey}`;
 
-// Deployed Contract Addresses
-const FORWARDER_ADDRESS = process.env.FORWARDER_ADDRESS || process.env.VITE_FORWARDER_ADDRESS || 
-  '0xa0c88e92B8d9D49cc256a036f29F47053ad422cC';
+// Contract addresses
+const FORWARDER_ADDRESS = process.env.FORWARDER_ADDRESS || '';
+const VAULT_ADDRESS = process.env.VAULT_ADDRESS || '';
+const USDC_ADDRESS = networkConfig.usdcAddress;
 
-const VAULT_ADDRESS = process.env.VAULT_ADDRESS || process.env.VITE_VAULT_ADDRESS || 
-  '0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E';
-
-const USDC_ADDRESS_SEPOLIA = process.env.USDC_ADDRESS || process.env.VITE_USDC_ADDRESS || 
-  '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
-
-const RPC_URLS = [
-  'https://ethereum-sepolia-rpc.publicnode.com',
-  'https://rpc.sepolia.org',
-  'https://sepolia.drpc.org',
-  'https://1rpc.io/sepolia'
-];
-
+// Setup provider with fallback
 let provider;
 let relayerWallet;
 
-// Setup RPC Provider with fallbacks
-for (const rpc of RPC_URLS) {
+for (const rpc of networkConfig.rpcUrls) {
   try {
-    provider = new ethers.JsonRpcProvider(rpc, 11155111, { staticNetwork: true });
+    provider = new ethers.JsonRpcProvider(rpc, networkConfig.chainId, { staticNetwork: true });
     relayerWallet = new ethers.Wallet(RELAYER_PRIVATE_KEY, provider);
-    console.log(`[Relayer] Conectado a RPC: ${rpc}`);
+    console.log(`[Relayer] Connected to ${rpc}`);
     break;
   } catch (e) {
-    console.warn(`[Relayer] Falló RPC ${rpc}, intentando siguiente...`);
+    console.warn(`[Relayer] Failed ${rpc}: ${e.message}`);
   }
 }
 
 if (!relayerWallet) {
-  provider = new ethers.JsonRpcProvider('https://rpc.sepolia.org');
-  relayerWallet = new ethers.Wallet(RELAYER_PRIVATE_KEY, provider);
+  console.error('[FATAL] Could not connect to any RPC');
+  process.exit(1);
 }
 
 // ==========================================
@@ -70,84 +98,112 @@ const FORWARDER_ABI = [
 ];
 
 const VAULT_ABI = [
+  'function depositVault() public payable',
+  'function depositTokenVault(address token, uint256 amount) external',
   'function depositTokenWithAuthorization(address token, address from, uint256 amount, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) external',
   'function depositTokenWithPermit(address token, address from, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external',
+  'function withdrawVault(uint256 amount) external',
+  'function withdrawTokenVault(address token, uint256 amount) external',
+  'function settleBatch(address payer, address payable payee, uint256 settleAmount, bytes32 merkleRoot, uint64 batchNonce) external',
   'function settleTokenBatch(address payer, address payee, address token, uint256 settleAmount, bytes32 merkleRoot, uint64 batchNonce) external',
   'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)',
   'function getTokenVault(address payer, address token) external view returns (address, uint256, uint256, uint256, bytes32, uint64)',
   'function isTrustedForwarder(address forwarder) external view returns (bool)'
 ];
 
-const forwarderContract = new ethers.Contract(FORWARDER_ADDRESS, FORWARDER_ABI, relayerWallet);
-const vaultContract = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, relayerWallet);
+const ERC20_ABI = [
+  'function approve(address spender, uint256 amount) external returns (bool)',
+  'function allowance(address owner, address spender) external view returns (uint256)',
+  'function balanceOf(address account) external view returns (uint256)',
+  'function decimals() external view returns (uint8)',
+  'function transfer(address to, uint256 amount) external returns (bool)',
+  'function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external',
+  'function nonces(address owner) external view returns (uint256)',
+  'function receiveWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) external'
+];
+
+const forwarderContract = FORWARDER_ADDRESS ? new ethers.Contract(FORWARDER_ADDRESS, FORWARDER_ABI, relayerWallet) : null;
+const vaultContract = VAULT_ADDRESS ? new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, relayerWallet) : null;
+const usdcContract = USDC_ADDRESS ? new ethers.Contract(USDC_ADDRESS, ERC20_ABI, relayerWallet) : null;
 
 // ==========================================
 // ROUTES
 // ==========================================
 
-/**
- * @route GET /api/status
- * @notice Check Relayer health, balance, and contract configurations
- */
 app.get('/api/status', async (req, res) => {
   try {
-    const address = relayerWallet.address;
-    const balanceWei = await provider.getBalance(address).catch(() => 0n);
-    const balanceEth = ethers.formatEther(balanceWei);
-
+    const balance = await provider.getBalance(relayerWallet.address);
     res.json({
       status: 'online',
-      network: 'Sepolia',
-      chainId: 11155111,
-      relayerAddress: address,
-      relayerBalanceEth: balanceEth,
-      forwarderAddress: FORWARDER_ADDRESS,
-      vaultAddress: VAULT_ADDRESS,
-      usdcAddress: USDC_ADDRESS_SEPOLIA,
-      timestamp: Date.now()
+      network: NETWORK,
+      chainId: networkConfig.chainId,
+      networkName: networkConfig.name,
+      relayerAddress: relayerWallet.address,
+      relayerBalance: ethers.formatEther(balance),
+      forwarderAddress: FORWARDER_ADDRESS || 'NOT SET',
+      vaultAddress: VAULT_ADDRESS || 'NOT SET',
+      usdcAddress: USDC_ADDRESS || 'NOT SET',
+      timestamp: Date.now(),
     });
-  } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
-/**
- * @route GET /api/forwarder/nonce/:address
- * @notice Get current forwarder nonce for a user account
- */
 app.get('/api/forwarder/nonce/:address', async (req, res) => {
   try {
-    const userAddress = req.params.address;
-    const nonce = await forwarderContract.getNonce(userAddress);
-    res.json({ address: userAddress, nonce: Number(nonce) });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (!forwarderContract) throw new Error('Forwarder not configured');
+    const nonce = await forwarderContract.getNonce(req.params.address);
+    res.json({ address: req.params.address, nonce: Number(nonce) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * @route POST /api/relay/forward
- * @notice ERC-2771 Meta-Transaction Execution
- * Relayer pays gas and forwards user's signed request
- */
+app.get('/api/vault/:address', async (req, res) => {
+  try {
+    if (!vaultContract) throw new Error('Vault not configured');
+    const vault = await vaultContract.getVault(req.params.address);
+    res.json({
+      payer: vault[0],
+      lockedAmount: vault[1].toString(),
+      totalSettled: vault[2].toString(),
+      availableToSpend: vault[3].toString(),
+      lastMerkleRoot: vault[4],
+      nonce: Number(vault[5]),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/usdc/balance/:address', async (req, res) => {
+  try {
+    if (!usdcContract) throw new Error('USDC not configured');
+    const balance = await usdcContract.balanceOf(req.params.address);
+    const decimals = await usdcContract.decimals();
+    res.json({
+      address: req.params.address,
+      balance: ethers.formatUnits(balance, decimals),
+      rawBalance: balance.toString(),
+      decimals: Number(decimals),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ERC-2771 Meta-Transaction Forwarding
 app.post('/api/relay/forward', async (req, res) => {
   try {
+    if (!forwarderContract) throw new Error('Forwarder not configured');
     const { forwardRequest, signature } = req.body;
-    if (!forwardRequest || !signature) {
-      return res.status(400).json({ error: 'Faltan forwardRequest o signature' });
-    }
+    if (!forwardRequest || !signature) throw new Error('Missing forwardRequest or signature');
 
-    console.log(`[Relay Forward] Ejecutando petición de ${forwardRequest.from} hacia ${forwardRequest.to}...`);
-
-    // Verify signature first
     const isValid = await forwarderContract.verify(forwardRequest, signature);
-    if (!isValid) {
-      return res.status(400).json({ error: 'Firma EIP-712 del ForwardRequest inválida o expirada' });
-    }
+    if (!isValid) throw new Error('Invalid EIP-712 signature');
 
     const tx = await forwarderContract.execute(forwardRequest, signature);
-    console.log(`[Relay Forward] Tx enviada: ${tx.hash}`);
-
     const receipt = await tx.wait(1);
 
     res.json({
@@ -155,225 +211,97 @@ app.post('/api/relay/forward', async (req, res) => {
       txHash: tx.hash,
       blockNumber: receipt.blockNumber,
       gasUsed: receipt.gasUsed.toString(),
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
+      explorerUrl: `${networkConfig.blockExplorer}/tx/${tx.hash}`,
     });
-  } catch (error) {
-    console.error('[Relay Forward Error]', error);
-    res.status(500).json({ error: error.message, details: error.reason || error.data });
+  } catch (err) {
+    console.error('[Relay Forward Error]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * @route POST /api/relay/deposit-authorization
- * @notice 100% Gasless Deposit using EIP-3009 receiveWithAuthorization
- * Relayer pays gas; funds are transferred directly from user's wallet to vault.
- */
+// Gasless Deposit via EIP-3009
 app.post('/api/relay/deposit-authorization', async (req, res) => {
   try {
-    const {
-      token = USDC_ADDRESS_SEPOLIA,
-      from,
-      amount,
-      validAfter = 0,
-      validBefore,
-      nonce,
-      v,
-      r,
-      s
-    } = req.body;
-
-    if (!from || !amount || !nonce || !v || !r || !s) {
-      return res.status(400).json({ error: 'Faltan parámetros de autorización EIP-3009' });
+    if (!vaultContract || !usdcContract) throw new Error('Contracts not configured');
+    
+    const { token = USDC_ADDRESS, from, amount, validAfter = 0, validBefore, nonce, v, r, s } = req.body;
+    if (!from || !amount || !nonce || v === undefined || !r || !s) {
+      throw new Error('Missing EIP-3009 parameters');
     }
 
-    const amountUnits = ethers.parseUnits(amount.toString(), 6);
     const deadline = validBefore || Math.floor(Date.now() / 1000) + 3600;
+    const decimals = await usdcContract.decimals();
+    const amountUnits = ethers.parseUnits(amount.toString(), decimals);
 
-    console.log(`[Relay Deposit EIP-3009] Depositando ${amount} USDC de ${from} en Vault ${VAULT_ADDRESS}...`);
-
-    const tx = await vaultContract.depositTokenWithAuthorization(
-      token,
-      from,
-      amountUnits,
-      validAfter,
-      deadline,
-      nonce,
-      v,
-      r,
-      s
-    );
-
-    console.log(`[Relay Deposit EIP-3009] Tx transmitida: ${tx.hash}`);
+    console.log(`[EIP-3009] Depositing ${amount} from ${from}`);
+    const tx = await vaultContract.depositTokenWithAuthorization(token, from, amountUnits, validAfter, deadline, nonce, v, r, s);
     const receipt = await tx.wait(1);
 
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      blockNumber: receipt.blockNumber,
-      amountDeposited: amount,
-      depositor: from,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
-    });
-  } catch (error) {
-    console.error('[Relay Deposit Error]', error);
-    res.status(500).json({ error: error.message, details: error.reason || error.data });
+    res.json({ success: true, txHash: tx.hash, amount, depositor: from, explorerUrl: `${networkConfig.blockExplorer}/tx/${tx.hash}` });
+  } catch (err) {
+    console.error('[EIP-3009 Error]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * @route POST /api/relay/deposit-permit
- * @notice 100% Gasless Deposit using EIP-2612 permit + transferFrom
- * Relayer pays gas.
- */
+// Gasless Deposit via EIP-2612
 app.post('/api/relay/deposit-permit', async (req, res) => {
   try {
-    const {
-      token = USDC_ADDRESS_SEPOLIA,
-      from,
-      amount,
-      deadline,
-      v,
-      r,
-      s
-    } = req.body;
-
-    if (!from || !amount || !deadline || !v || !r || !s) {
-      return res.status(400).json({ error: 'Faltan parámetros de permit EIP-2612' });
+    if (!vaultContract || !usdcContract) throw new Error('Contracts not configured');
+    
+    const { token = USDC_ADDRESS, from, amount, deadline, v, r, s } = req.body;
+    if (!from || !amount || !deadline || v === undefined || !r || !s) {
+      throw new Error('Missing EIP-2612 parameters');
     }
 
-    const amountUnits = ethers.parseUnits(amount.toString(), 6);
+    const decimals = await usdcContract.decimals();
+    const amountUnits = ethers.parseUnits(amount.toString(), decimals);
 
-    console.log(`[Relay Deposit EIP-2612] Depositando ${amount} USDC con permit de ${from}...`);
-
-    const tx = await vaultContract.depositTokenWithPermit(
-      token,
-      from,
-      amountUnits,
-      deadline,
-      v,
-      r,
-      s
-    );
-
-    console.log(`[Relay Deposit EIP-2612] Tx enviada: ${tx.hash}`);
+    console.log(`[EIP-2612] Depositing ${amount} from ${from}`);
+    const tx = await vaultContract.depositTokenWithPermit(token, from, amountUnits, deadline, v, r, s);
     const receipt = await tx.wait(1);
 
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      blockNumber: receipt.blockNumber,
-      amountDeposited: amount,
-      depositor: from,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
-    });
-  } catch (error) {
-    console.error('[Relay Permit Error]', error);
-    res.status(500).json({ error: error.message, details: error.reason || error.data });
+    res.json({ success: true, txHash: tx.hash, amount, depositor: from, explorerUrl: `${networkConfig.blockExplorer}/tx/${tx.hash}` });
+  } catch (err) {
+    console.error('[EIP-2612 Error]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * @route POST /api/relay/settle-batch
- * @notice Gasless Offline Batch Settlement
- * Relayer pays the gas on Sepolia to execute settleTokenBatch on PollarVault!
- */
+// Batch Settlement
 app.post('/api/relay/settle-batch', async (req, res) => {
   try {
-    const {
-      payer,
-      payee,
-      token = USDC_ADDRESS_SEPOLIA,
-      amount,
-      merkleRoot,
-      nonce
-    } = req.body;
-
-    if (!payer || !payee || !amount) {
-      return res.status(400).json({ error: 'Faltan datos de liquidación (payer, payee, amount)' });
+    if (!vaultContract) throw new Error('Vault not configured');
+    
+    const { payer, payee, token, amount, merkleRoot, batchNonce } = req.body;
+    if (!payer || !payee || !amount || !merkleRoot || batchNonce === undefined) {
+      throw new Error('Missing settlement parameters');
     }
 
-    const formattedRoot = merkleRoot && merkleRoot.startsWith('0x')
-      ? merkleRoot
-      : `0x${merkleRoot || '00'.repeat(32)}`;
-
-    const amountUnits = ethers.parseUnits(Math.min(1000, parseFloat(amount)).toFixed(2), 6);
     let tx;
-    let usedVault = false;
-
-    // 1. Attempt smart contract settleTokenBatch first
-    try {
-      const tv = await vaultContract.getTokenVault(payer, token);
-      const lockedAmount = BigInt(tv[1] || 0n);
-      const totalSettled = BigInt(tv[2] || 0n);
-      const available = lockedAmount > totalSettled ? lockedAmount - totalSettled : 0n;
-      const onChainNonce = BigInt(tv[5] || 0n);
-
-      console.log(`[Relay Settle Batch] TokenVault de ${payer}: locked=${lockedAmount}, settled=${totalSettled}, avail=${available}, nonce=${onChainNonce}`);
-
-      const nextNonce = nonce && BigInt(nonce) > onChainNonce ? BigInt(nonce) : onChainNonce + 1n;
-      const settleUnits = available >= amountUnits ? amountUnits : (available > 0n ? available : 0n);
-
-      if (available > 0n && settleUnits > 0n) {
-        console.log(`[Relay Settle Batch] Ejecutando settleTokenBatch con ${ethers.formatUnits(settleUnits, 6)} USDC...`);
-        tx = await vaultContract.settleTokenBatch(
-          payer,
-          payee,
-          token,
-          settleUnits,
-          formattedRoot,
-          nextNonce
-        );
-        usedVault = true;
-      }
-    } catch (checkErr) {
-      console.warn(`[Relay Settle Batch] Advertencia consultando TokenVault:`, checkErr.message);
+    if (token && token !== ethers.ZeroAddress) {
+      tx = await vaultContract.settleTokenBatch(payer, payee, token, amount, merkleRoot, batchNonce);
+    } else {
+      tx = await vaultContract.settleBatch(payer, payee, amount, merkleRoot, batchNonce);
     }
 
-    // 2. Fallback: If vault was not funded or already exhausted, anchor the Merkle root on-chain directly
-    if (!tx) {
-      console.log(`[Relay Settle Batch] Anclando liquidación on-chain con el relayer hacia ${payee}...`);
-      const payloadData = ethers.hexlify(ethers.toUtf8Bytes(JSON.stringify({
-        protocol: 'POLLAR_OFFLINE_SETTLEMENT_V1',
-        relayed: true,
-        vault: VAULT_ADDRESS,
-        payer,
-        payee,
-        merkleRoot: formattedRoot,
-        amount: amount.toString(),
-        timestamp: Date.now()
-      })));
-
-      tx = await relayerWallet.sendTransaction({
-        to: payee,
-        value: 0n,
-        data: payloadData
-      });
-    }
-
-    console.log(`[Relay Settle Batch] Tx enviada: ${tx.hash}`);
     const receipt = await tx.wait(1);
-
-    res.json({
-      success: true,
-      txHash: tx.hash,
-      blockNumber: receipt.blockNumber,
-      amountSettled: amount,
-      payer,
-      payee,
-      usedVault,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
-    });
-  } catch (error) {
-    console.error('[Relay Settle Error]', error);
-    res.status(500).json({ error: error.message, details: error.reason || error.data });
+    res.json({ success: true, txHash: tx.hash, explorerUrl: `${networkConfig.blockExplorer}/tx/${tx.hash}` });
+  } catch (err) {
+    console.error('[Settle Error]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('========================================================');
-  console.log(`🚀 Pollar Gasless Relayer Backend corriendo en: http://0.0.0.0:${PORT}`);
-  console.log(`🔑 Relayer Address (Patrocinador Gas): ${relayerWallet.address}`);
-  console.log(`🏛️ PollarVault:    ${VAULT_ADDRESS}`);
-  console.log(`⚡ PollarForwarder: ${FORWARDER_ADDRESS}`);
-  console.log('========================================================');
+app.listen(PORT, () => {
+  console.log('='.repeat(60));
+  console.log(`Pollar Relayer v3.0 - ${networkConfig.name}`);
+  console.log(`Chain ID: ${networkConfig.chainId}`);
+  console.log(`RPC: ${provider.connection.url}`);
+  console.log(`Port: ${PORT}`);
+  console.log(`Relayer: ${relayerWallet.address}`);
+  console.log(`Forwarder: ${FORWARDER_ADDRESS || 'NOT SET'}`);
+  console.log(`Vault: ${VAULT_ADDRESS || 'NOT SET'}`);
+  console.log(`USDC: ${USDC_ADDRESS || 'NOT SET'}`);
+  console.log('='.repeat(60));
 });
