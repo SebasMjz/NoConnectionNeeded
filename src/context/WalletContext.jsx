@@ -50,6 +50,8 @@ export function WalletProvider({ children }) {
     return { biometricEnabled: false, darkMode: true };
   });
 
+  const [pendingTx, setPendingTx] = useState(null);
+
   // Device A (Payer) Wallet State with genuine Stellar Ed25519 Keys
   const [deviceA, setDeviceA] = useState(() => {
     // Generate real Stellar keypair if none saved
@@ -305,7 +307,7 @@ export function WalletProvider({ children }) {
     // 2. Real Ed25519 signature with Payer's secret key
     const payerSignature = await signWithStellarKey(deviceA.secretKey, txHash);
 
-    const pendingTx = {
+    const newTx = {
       payload,
       txHash,
       payerSignature,
@@ -314,7 +316,8 @@ export function WalletProvider({ children }) {
       createdAt: Date.now(),
     };
 
-    return pendingTx;
+    setPendingTx(newTx);
+    return newTx;
   };
 
   // 4. Payee processes, validates signature, counter-signs, and stores in Merkle Tree
@@ -372,6 +375,9 @@ export function WalletProvider({ children }) {
 
     // 7. Add to transaction list
     setTransactions(prev => [finalizedTx, ...prev]);
+
+    // Clear pendingTx after successful counter-sign
+    setPendingTx(null);
 
     // Confetti effect
     try {
@@ -684,7 +690,9 @@ export function WalletProvider({ children }) {
       linkCustomAccount,
       refreshOnlineBalance,
       requestFriendbotFunding,
-      isRefreshingBalance
+      isRefreshingBalance,
+      pendingTx,
+      setPendingTx
     }}>
       {children}
     </WalletContext.Provider>

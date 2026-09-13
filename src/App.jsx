@@ -35,19 +35,20 @@ function AppContent() {
   const [isTransportOpen, setIsTransportOpen] = useState(false);
 
 
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     logout,
-    activeDevice, 
-    setActiveDevice, 
-    isOnline, 
+    activeDevice,
+    setActiveDevice,
+    isOnline,
     isSimulatingOffline,
     setIsSimulatingOffline,
-    transactions, 
+    transactions,
     resetDemoData,
     deviceA,
     deviceB,
-    requestFriendbotFunding
+    requestFriendbotFunding,
+    pendingTx
   } = useWallet();
 
   // If user is not authenticated, show the Login Gateway
@@ -218,7 +219,7 @@ function AppContent() {
       {isTransportOpen && (
         <div className="pollar-modal-overlay" onClick={() => setIsTransportOpen(false)}>
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
-            <P2PTransportSelector onClose={() => setIsTransportOpen(false)} />
+            <P2PTransportSelector onClose={() => setIsTransportOpen(false)} payload={pendingTx} />
           </div>
         </div>
       )}
