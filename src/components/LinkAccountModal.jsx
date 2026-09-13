@@ -223,14 +223,14 @@ export default function LinkAccountModal({ isOpen, onClose }) {
         <form onSubmit={handleLink} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>
-              Importar Clave Stellar (Secreta S... o Pública G...)
+              Vincular Dirección Pública Stellar (G...)
             </label>
             <div style={{ position: 'relative' }}>
               <input
                 type="text"
                 value={inputKey}
                 onChange={(e) => setInputKey(e.target.value)}
-                placeholder="S... (Firmar) o G... (Solo Lectura)"
+                placeholder="G... (Sin clave privada requerida)"
                 className="pollar-input"
                 style={{ fontSize: 12, fontFamily: 'var(--font-mono)', paddingRight: 40 }}
                 required

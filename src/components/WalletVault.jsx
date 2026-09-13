@@ -30,6 +30,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     transactions,
     changeSelectedAsset,
     selectActiveWallet,
+    openSendModal,
   } = useWallet();
 
   const [transferAmount, setTransferAmount] = useState('');
@@ -70,48 +71,66 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     );
   }
 
-  const availableInMain = Math.max(0, activeWallet.mainBalance - activeWallet.derivedOffline);
-  const unspentOffline = Math.max(0, activeWallet.derivedOffline - activeWallet.spentOffline);
+  const mainBal = Number(activeWallet.mainBalance) || 0;
+  const derivedOff = Number(activeWallet.derivedOffline) || 0;
+  const spentOff = Number(activeWallet.spentOffline) || 0;
+
+  const availableInMain = Math.max(0, mainBal - derivedOff);
+  const unspentOffline = Math.max(0, derivedOff - spentOff);
 
   const recentTxs = transactions.slice(0, 5);
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
   const totalPending = transactions
     .filter(t => t.status !== 'SYNCED_ONCHAIN')
-    .reduce((acc, t) => acc + t.payload.amount, 0);
+    .reduce((acc, t) => acc + (t.payload?.amount || 0), 0);
 
   const handleTransfer = (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     setFeedback({ type: '', message: '' });
+    const num = parseFloat(transferAmount);
+    if (isNaN(num) || num <= 0) {
+      setFeedback({ type: 'error', message: 'Ingresa un monto válido mayor a 0' });
+      return;
+    }
     try {
       if (activeAction === 'allocate') {
         allocateOfflineFunds(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${activeWallet.asset} bloqueados en Bóveda Offline` });
+        setFeedback({
+          type: 'success',
+          message: `¡Asignación exitosa! ${num.toFixed(2)} ${activeWallet.asset || 'XLM'} bloqueados en tu Bóveda Offline.`
+        });
       } else {
         returnFundsToMain(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${activeWallet.asset} liberados a Billetera Principal` });
+        setFeedback({
+          type: 'success',
+          message: `¡Liberación exitosa! ${num.toFixed(2)} ${activeWallet.asset || 'XLM'} devueltos a tu Billetera Principal.`
+        });
       }
       setTransferAmount('');
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message });
+      setFeedback({ type: 'error', message: err.message || 'Error al actualizar bóveda' });
     }
   };
 
   const handleQuickPercent = (pct) => {
     if (activeAction === 'allocate') {
       const amt = (availableInMain * pct).toFixed(2);
-      setTransferAmount(amt > 0 ? amt : '');
+      setTransferAmount(parseFloat(amt) > 0 ? amt : '');
     } else {
       const amt = (unspentOffline * pct).toFixed(2);
-      setTransferAmount(amt > 0 ? amt : '');
+      setTransferAmount(parseFloat(amt) > 0 ? amt : '');
     }
   };
 
   const handleFundFriendbot = async () => {
     setIsFunding(true);
-    setFeedback({ type: '', message: '' });
+    setFeedback({ type: '', message: 'Conectando con Friendbot de Stellar Testnet...' });
     try {
       await requestFriendbotFunding(activeWallet.publicKey);
-      setFeedback({ type: 'success', message: '¡Recarga Confirmada! +10,000.00 XLM acreditados en Stellar Testnet' });
+      setFeedback({
+        type: 'success',
+        message: '¡Recarga Confirmada! +10,000.00 XLM acreditados en tu cuenta de Stellar Testnet.'
+      });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al conectar con Friendbot' });
     } finally {
@@ -287,8 +306,16 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               <div className="pollar-transfer-circle" style={{ background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', border: '2px solid rgba(16,185,129,0.3)' }}>
                 <Send size={16} />
               </div>
-              <span className="pollar-transfer-name">Pagar</span>
+              <span className="pollar-transfer-name">Pagar P2P</span>
             </button>
+            {openSendModal && (
+              <button onClick={openSendModal} className="pollar-transfer-item">
+                <div className="pollar-transfer-circle" style={{ background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', border: '2px solid rgba(0,98,255,0.3)' }}>
+                  <Wallet size={16} />
+                </div>
+                <span className="pollar-transfer-name">Modal Pollar</span>
+              </button>
+            )}
             <button onClick={handleFundFriendbot} className="pollar-transfer-item">
               <div className="pollar-transfer-circle" style={{ background: 'var(--color-amber-bg)', color: 'var(--color-amber)', border: '2px solid rgba(245,158,11,0.3)' }}>
                 ⚡
@@ -376,9 +403,39 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               ))}
             </div>
 
+            {activeAction === 'allocate' && availableInMain <= 0 && (
+              <div style={{
+                padding: '12px 14px', borderRadius: 14,
+                background: 'var(--color-amber-bg)', border: '1px solid rgba(245,158,11,0.3)',
+                display: 'flex', flexDirection: 'column', gap: 8
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#92400E' }}>
+                  <AlertTriangle size={16} />
+                  <span>Sin saldo libre en Billetera Principal (0.00 {activeWallet.asset || 'XLM'})</span>
+                </div>
+                <p style={{ fontSize: 11, color: '#B45309', margin: 0, lineHeight: 1.4 }}>
+                  Para asignar saldo a tu bóveda offline, primero necesitas fondos en Stellar Testnet.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleFundFriendbot}
+                  disabled={isFunding}
+                  style={{
+                    padding: '8px 12px', borderRadius: 10,
+                    background: '#D97706', color: '#FFFFFF',
+                    fontSize: 12, fontWeight: 800, border: 'none', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                  }}
+                >
+                  {isFunding ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Recargar 10,000 XLM Gratis (Friendbot Testnet)
+                </button>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={!transferAmount || parseFloat(transferAmount) <= 0}
+              disabled={!transferAmount || parseFloat(transferAmount) <= 0 || (activeAction === 'allocate' && availableInMain <= 0)}
               className={activeAction === 'allocate' ? 'pollar-btn-primary' : 'pollar-btn-emerald'}
             >
               {activeAction === 'allocate' ? 'Bloquear Fondos para Offline' : 'Devolver a Billetera Principal'}

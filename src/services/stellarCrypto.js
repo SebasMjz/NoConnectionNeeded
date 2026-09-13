@@ -168,7 +168,7 @@ export async function fetchRealAccountBalances(publicKey, horizonUrl = 'https://
  * Computes deterministic canonical SHA-256 hash for transaction payload
  */
 export async function computeCanonicalTxHash(payload) {
-  const canonicalString = [
+  const parts = [
     payload.id,
     payload.payer,
     payload.payee,
@@ -177,9 +177,12 @@ export async function computeCanonicalTxHash(payload) {
     payload.nonce.toString(),
     payload.timestamp.toString(),
     payload.memo || ''
-  ].join('|');
+  ];
+  if (payload.signer && payload.signer !== payload.payer) {
+    parts.push(payload.signer);
+  }
 
-  return sha256Hex(canonicalString);
+  return sha256Hex(parts.join('|'));
 }
 
 /**
@@ -359,18 +362,139 @@ export async function verifyMerkleProof(proof) {
 }
 
 /**
- * Generates Reliable High-Res QR Code Data URL
+ * Serializes an invoice into a compact, low-density representation for simple QR codes
  */
-export async function generateQrDataUrl(dataObject, colorDark = '#00f2fe') {
+export function serializeCompactInvoice({ payee, amount, asset = 'XLM', memo = '' }) {
+  return {
+    t: 'inv',
+    p: payee,
+    a: typeof amount === 'number' ? amount : (parseFloat(amount) || 0),
+    c: asset,
+    m: memo || ''
+  };
+}
+
+/**
+ * Serializes a signed payment into a compact payload, stripping redundant hash/null fields
+ * to drastically reduce QR code complexity and module count.
+ */
+export function serializeCompactPayment(tx) {
+  const payload = tx.payload || tx;
+  const compact = {
+    t: 'pay',
+    id: payload.id,
+    p: payload.payer,
+    r: payload.payee,
+    a: payload.amount,
+    c: payload.asset,
+    n: payload.nonce,
+    ts: payload.timestamp,
+    m: payload.memo || '',
+    sig: tx.payerSignature
+  };
+  if (payload.signer && payload.signer !== payload.payer) {
+    compact.s = payload.signer;
+  }
+  return compact;
+}
+
+/**
+ * Robust parser that unpacks both compact (v2) and legacy (v1) QR data,
+ * handling invoices (cobro) and signed payments (pago) without errors.
+ */
+export async function parsePaymentQrData(rawInput) {
+  if (!rawInput) throw new Error('Contenido vacío');
+
+  let data = rawInput;
+  if (typeof rawInput === 'string') {
+    let clean = rawInput.trim();
+    try {
+      data = JSON.parse(clean);
+      if (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+    } catch (err) {
+      if (clean.includes('{') && clean.includes('}')) {
+        const jsonStart = clean.indexOf('{');
+        const jsonEnd = clean.lastIndexOf('}');
+        data = JSON.parse(clean.slice(jsonStart, jsonEnd + 1));
+      } else {
+        throw new Error('Formato JSON no válido');
+      }
+    }
+  }
+
+  // 1. Invoice parsing (QR de Cobro)
+  if (
+    data.t === 'inv' ||
+    data.type === 'POLLAR_INVOICE' ||
+    data.type === 'INVOICE' ||
+    (data.p && !data.sig && !data.r) ||
+    (data.payee && !data.payer && !data.sig)
+  ) {
+    const rawAmt = data.a !== undefined ? data.a : (data.amount !== undefined ? data.amount : 0);
+    return {
+      type: 'INVOICE',
+      payee: data.p || data.payee,
+      amount: typeof rawAmt === 'number' ? rawAmt : (parseFloat(rawAmt) || 0),
+      asset: data.c || data.asset || 'XLM',
+      memo: data.m !== undefined ? data.m : (data.memo || '')
+    };
+  }
+
+  // 2. Compact payment payload (v2 - Pago Firmado)
+  if (data.t === 'pay' || (data.p && data.r && data.sig)) {
+    const txPayload = {
+      id: data.id || `TX-OFFLINE-${Date.now().toString(36).toUpperCase()}`,
+      payer: data.p,
+      signer: data.s || data.p,
+      payee: data.r,
+      amount: typeof data.a === 'number' ? data.a : parseFloat(data.a),
+      asset: data.c || 'XLM',
+      nonce: parseInt(data.n || 1, 10),
+      memo: data.m || '',
+      timestamp: parseInt(data.ts || Date.now(), 10)
+    };
+    const txHash = data.txHash || await computeCanonicalTxHash(txPayload);
+    return {
+      type: 'PAYMENT',
+      tx: {
+        payload: txPayload,
+        txHash,
+        payerSignature: data.sig,
+        payeeSignature: null,
+        status: 'PENDING_COUNTER_SIGN'
+      }
+    };
+  }
+
+  // 3. Legacy payment payload (v1)
+  if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash || data.tx || (data.payload && data.payerSignature)) {
+    const tx = data.tx || data;
+    return {
+      type: 'PAYMENT',
+      tx
+    };
+  }
+
+  throw new Error('Formato QR no compatible');
+}
+
+/**
+ * Generates Simple, High-Readability Black & White QR Code Data URL.
+ * Uses Error Correction 'L' (Low 7%) to drastically decrease module density,
+ * producing larger, cleaner pixel squares that scan instantly on any camera.
+ */
+export async function generateQrDataUrl(dataObject, colorDark = '#000000', colorLight = '#FFFFFF') {
   const jsonString = typeof dataObject === 'string' ? dataObject : JSON.stringify(dataObject);
   return QRCode.toDataURL(jsonString, {
-    width: 320,
-    margin: 2,
+    width: 340,
+    margin: 1,
     color: {
       dark: colorDark,
-      light: '#07090e'
+      light: colorLight
     },
-    errorCorrectionLevel: 'M'
+    errorCorrectionLevel: 'L'
   });
 }
 
@@ -427,6 +551,9 @@ export async function submitRealStellarBatchTransaction({
   const numAmount = parseFloat(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
     throw new Error(`Monto inválido para liquidación on-chain: ${amount}`);
+  }
+  if (payerPublicKey && payeePublicKey && payerPublicKey.trim() === payeePublicKey.trim()) {
+    throw new Error('No se pueden enviar transacciones a la misma wallet que emite el pago/QR (la cuenta de origen y destino son idénticas).');
   }
   const txAmount = numAmount.toFixed(7);
 

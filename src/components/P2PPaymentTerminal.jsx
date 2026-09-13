@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { generateQrDataUrl } from '../services/stellarCrypto';
+import {
+  generateQrDataUrl,
+  serializeCompactInvoice,
+  serializeCompactPayment,
+  parsePaymentQrData
+} from '../services/stellarCrypto';
 import { getBarcodeService } from '../services/BarcodeService';
+import QRScannerModal from './QRScannerModal';
 import CryptoSelector from './CryptoSelector';
 import confetti from 'canvas-confetti';
 import {
@@ -14,29 +20,42 @@ import {
   X,
   Bluetooth,
   Wallet,
+  Upload,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 export default function P2PPaymentTerminal({ onOpenTransport }) {
   const {
     activeWallet,
     createOfflinePayment,
+    cancelPendingPayment,
     receiveAndCounterSign,
+    sendPollarPayment,
+    openSendModal,
     isOnline,
     changeSelectedAsset,
   } = useWallet();
 
   const [mode, setMode] = useState('pay'); // 'pay' | 'receive'
+  const [isSendingDirect, setIsSendingDirect] = useState(false);
   const [payAmount, setPayAmount] = useState('1.00');
   const [payMemo, setPayMemo] = useState('Pago P2P Offline');
   const [payeeAddress, setPayeeAddress] = useState('');
-  const [paymentQr, setPaymentQr] = useState('');
-  const [pendingTx, setPendingTx] = useState(null);
   const [receiveAmount, setReceiveAmount] = useState('1.00');
   const [receiveMemo, setReceiveMemo] = useState('Cobro P2P Offline');
+  const [pendingTx, setPendingTx] = useState(null);
   const [invoiceQr, setInvoiceQr] = useState('');
+  const [paymentQr, setPaymentQr] = useState('');
+  const [invoicePayloadString, setInvoicePayloadString] = useState('');
+  const [paymentPayloadString, setPaymentPayloadString] = useState('');
+  const [copiedInvoice, setCopiedInvoice] = useState(false);
+  const [copiedPayment, setCopiedPayment] = useState(false);
   const [feedback, setFeedback] = useState({ type: '', message: '' });
-  const [handshakeStep, setHandshakeStep] = useState(0);
   const [scanError, setScanError] = useState('');
+  const [handshakeStep, setHandshakeStep] = useState(0);
+
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [showManualCounterSign, setShowManualCounterSign] = useState(false);
   const [manualPayload, setManualPayload] = useState('');
   const [parsedPayload, setParsedPayload] = useState(null);
@@ -50,53 +69,104 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     : 0;
   const quickAmounts = ['1.00', '2.50', '5.00', '10.00', '20.00'];
 
-  // Generate Invoice QR for receive mode
+  // Generate Simplified Invoice QR for receive mode (Pure Black & White, high contrast)
   useEffect(() => {
     if (mode === 'receive' && activeWallet) {
-      generateQrDataUrl({
-        type: 'POLLAR_INVOICE',
+      const compactInv = serializeCompactInvoice({
         payee: activeWallet.publicKey,
         amount: parseFloat(receiveAmount) || 0,
-        asset: activeWallet.asset,
+        asset: activeWallet.asset || 'XLM',
         memo: receiveMemo,
-        timestamp: Date.now(),
-      }, '#0062FF').then(setInvoiceQr);
+      });
+      setInvoicePayloadString(JSON.stringify(compactInv));
+      generateQrDataUrl(compactInv, '#000000', '#FFFFFF').then(setInvoiceQr);
     }
   }, [mode, receiveAmount, receiveMemo, activeWallet?.publicKey, activeWallet?.asset]);
 
-  // Generate Payment QR when tx created
+  // Generate Simplified Payment QR when tx created (Pure Black & White, high contrast)
   useEffect(() => {
     if (pendingTx) {
-      generateQrDataUrl({
-        type: 'POLLAR_PAYMENT_PAYLOAD',
-        tx: pendingTx
-      }, '#10B981').then(setPaymentQr);
+      const compactPay = serializeCompactPayment(pendingTx);
+      setPaymentPayloadString(JSON.stringify(compactPay));
+      generateQrDataUrl(compactPay, '#000000', '#FFFFFF').then(setPaymentQr);
     }
   }, [pendingTx]);
 
   // Scan QR code
-  const startScan = async () => {
+  const startScan = () => {
     setScanError('');
     setFeedback({ type: '', message: '' });
+    setIsScannerOpen(true);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanError('');
+    setFeedback({ type: '', message: 'Leyendo código QR de la imagen...' });
     try {
-      const result = await barcodeService.current.scan();
-      if (result) handleScannedData(result);
-    } catch (err) {
-      if (err.message && !err.message.includes('cancel')) {
-        setScanError(err.message || 'Error al escanear');
+      const decodedText = await barcodeService.current.scanFile(file);
+      if (decodedText) {
+        handleScannedData(decodedText);
+      } else {
+        throw new Error('No se detectó ningún código QR en la imagen.');
       }
+    } catch (err) {
+      setScanError(err.message || 'Error al procesar archivo');
+      setFeedback({ type: 'error', message: err.message || 'No se pudo leer el QR' });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleDirectPay = async () => {
+    if (!payeeAddress || !payeeAddress.trim().startsWith('G')) {
+      setFeedback({ type: 'error', message: 'Ingresa una dirección válida de Stellar (G...)' });
+      return;
+    }
+    if (activeWallet && payeeAddress.trim() === activeWallet.publicKey) {
+      setFeedback({ type: 'error', message: 'No puedes enviar pagos a tu propia billetera (la cuenta de destino es la misma emisora).' });
+      return;
+    }
+    const num = parseFloat(payAmount);
+    if (isNaN(num) || num <= 0) {
+      setFeedback({ type: 'error', message: 'Ingresa un monto válido mayor a 0' });
+      return;
+    }
+    setIsSendingDirect(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      const res = await sendPollarPayment({
+        destination: payeeAddress.trim(),
+        amount: payAmount,
+        asset: activeWallet.asset,
+        memo: payMemo,
+      });
+      setFeedback({
+        type: 'success',
+        message: `¡Pago on-chain confirmado vía Pollar Core! Hash: ${res.hash.slice(0, 10)}... (Sin Private Key)`,
+      });
+      setPayeeAddress('');
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message || 'Error al enviar pago con Pollar Core' });
+    } finally {
+      setIsSendingDirect(false);
     }
   };
 
   const handlePay = async (e) => {
     e?.preventDefault();
     setFeedback({ type: '', message: '' });
+    if (activeWallet && payeeAddress.trim() === activeWallet.publicKey) {
+      setFeedback({ type: 'error', message: 'No puedes generar un pago hacia tu propia billetera.' });
+      return;
+    }
     setHandshakeStep(1);
     try {
       const tx = await createOfflinePayment(payeeAddress, payAmount, payMemo);
       setPendingTx(tx);
       setHandshakeStep(2);
-      setFeedback({ type: 'success', message: '¡Pago firmado! Muestra este QR al cobrador para contrafirma.' });
+      setFeedback({ type: 'success', message: '¡Pago offline firmado! Muestra este QR al cobrador para contrafirma.' });
       if (navigator.vibrate) navigator.vibrate(60);
     } catch (err) {
       setHandshakeStep(0);
@@ -107,21 +177,39 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
   const handleScannedData = async (rawJson) => {
     setFeedback({ type: '', message: '' });
     try {
-      const data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+      const parsed = await parsePaymentQrData(rawJson);
 
-      if (data.type === 'POLLAR_INVOICE') {
+      if (parsed.type === 'INVOICE') {
+        const isSelfInvoice = activeWallet && parsed.payee === activeWallet.publicKey;
         // Received a payment request — populate pay form
-        setPayeeAddress(data.payee);
-        setPayAmount(data.amount?.toString() || '1.00');
-        setPayMemo(data.memo || 'Pago');
-        if (data.asset) changeSelectedAsset(data.asset);
+        setPayeeAddress(parsed.payee);
+        setPayAmount(parsed.amount ? parsed.amount.toString() : '1.00');
+        setPayMemo(parsed.memo || 'Pago');
+        if (parsed.asset) changeSelectedAsset(parsed.asset);
         setMode('pay');
-        setFeedback({ type: 'success', message: `Factura recibida: ${data.amount} ${data.asset}` });
+        if (isSelfInvoice) {
+          setFeedback({
+            type: 'info',
+            message: `Factura propia cargada (${parsed.amount} ${parsed.asset}). Para enviar el pago, usa una billetera pagadora distinta.`
+          });
+        } else {
+          setFeedback({
+            type: 'success',
+            message: `¡Factura de cobro recibida! Monto: ${parsed.amount} ${parsed.asset}`
+          });
+        }
         if (navigator.vibrate) navigator.vibrate([40, 40]);
-      } else if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash) {
+        return;
+      } else if (parsed.type === 'PAYMENT') {
+        const payload = parsed.tx;
+        if (activeWallet && payload.payload?.payer === activeWallet.publicKey) {
+          throw new Error('No puedes contrafirmar un pago emitido por tu propia billetera.');
+        }
+        if (payload.payload?.payer && payload.payload?.payee && payload.payload.payer === payload.payload.payee) {
+          throw new Error('Transacción rechazada: La wallet pagadora y receptora son idénticas.');
+        }
         // Received a signed payment — counter-sign it
         setHandshakeStep(3);
-        const payload = data.tx || data;
         await receiveAndCounterSign(payload);
         setFeedback({ type: 'success', message: `¡Cobro Confirmado! +${payload.payload.amount} ${payload.payload.asset}` });
         try {
@@ -138,11 +226,17 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
   };
 
   const handleManualCounterSign = async () => {
-    if (!parsedPayload) return;
+    if (!parsedPayload || parsedPayload.type !== 'PAYMENT') return;
     setIsCounterSigning(true);
     setFeedback({ type: '', message: '' });
     try {
       const tx = parsedPayload.tx;
+      if (activeWallet && tx.payload?.payer === activeWallet.publicKey) {
+        throw new Error('No puedes contrafirmar un pago emitido por tu propia billetera.');
+      }
+      if (tx.payload?.payer && tx.payload?.payee && tx.payload.payer === tx.payload.payee) {
+        throw new Error('Transacción rechazada: La wallet pagadora y receptora son idénticas.');
+      }
       setHandshakeStep(3);
       await receiveAndCounterSign(tx);
       setFeedback({ type: 'success', message: `¡Cobro Confirmado! +${tx.payload.amount} ${tx.payload.asset}` });
@@ -158,21 +252,39 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     }
   };
 
-  const handleParseManualPayload = (raw) => {
+  const handleApplyInvoicePayload = () => {
+    if (!parsedPayload || parsedPayload.type !== 'INVOICE') return;
+    const inv = parsedPayload.invoice;
+    setPayeeAddress(inv.payee);
+    setPayAmount(inv.amount ? inv.amount.toString() : '1.00');
+    setPayMemo(inv.memo || 'Pago');
+    if (inv.asset) changeSelectedAsset(inv.asset);
+    setMode('pay');
+    setShowManualCounterSign(false);
+    setManualPayload('');
+    setParsedPayload(null);
+    setFeedback({
+      type: 'success',
+      message: `¡Cobro cargado exitosamente! Monto: ${inv.amount} ${inv.asset}`
+    });
+  };
+
+  const handleParseManualPayload = async (raw) => {
     setManualPayload(raw);
     setPayloadError('');
     setParsedPayload(null);
     if (!raw?.trim()) return;
     try {
-      const data = JSON.parse(raw);
-      const tx = data.tx || data;
-      if (!tx || (!tx.txHash && !tx.payerSignature)) {
-        setPayloadError('JSON no contiene payload válido');
-        return;
+      const parsed = await parsePaymentQrData(raw);
+      if (parsed.type === 'INVOICE') {
+        setParsedPayload({ raw, type: 'INVOICE', invoice: parsed });
+      } else if (parsed.type === 'PAYMENT') {
+        setParsedPayload({ raw, type: 'PAYMENT', tx: parsed.tx });
+      } else {
+        setPayloadError('Formato de payload no reconocido');
       }
-      setParsedPayload({ raw: data, tx });
     } catch (e) {
-      setPayloadError('JSON inválido: ' + e.message);
+      setPayloadError('Error al leer payload: ' + e.message);
     }
   };
 
@@ -275,8 +387,17 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
-              <Camera size={18} /> Escanear QR de Factura
+              <Camera size={18} /> Escanear con Cámara
             </button>
+            <label style={{
+              width: 52, padding: '14px 0', borderRadius: 16,
+              background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
+              color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer'
+            }} title="Cargar imagen de QR">
+              <Upload size={18} />
+              <input type="file" accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+            </label>
             {onOpenTransport && (
               <button onClick={onOpenTransport} style={{
                 width: 52, padding: '14px 0', borderRadius: 16,
@@ -321,9 +442,44 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               <input type="text" value={payMemo} onChange={(e) => setPayMemo(e.target.value)} className="pollar-input" />
             </div>
 
-            <button type="submit" disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline} className="pollar-btn-primary">
-              <QrCode size={18} /> Firmar y Generar QR
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={handleDirectPay}
+                disabled={isSendingDirect}
+                className="pollar-btn-primary"
+                style={{ background: 'linear-gradient(135deg, #0062FF 0%, #4F46E5 100%)', boxShadow: '0 4px 14px rgba(0, 98, 255, 0.3)' }}
+              >
+                <Send size={18} />
+                {isSendingDirect ? 'Procesando con Pollar Core...' : 'Enviar Pago On-Chain (Pollar Core)'}
+              </button>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="submit"
+                  disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline}
+                  className="pollar-btn-secondary"
+                  style={{ flex: 1 }}
+                >
+                  <QrCode size={16} /> QR Offline (Bóveda)
+                </button>
+                {openSendModal && (
+                  <button
+                    type="button"
+                    onClick={openSendModal}
+                    className="pollar-btn-outline-blue"
+                    style={{ flex: 1 }}
+                  >
+                    <Wallet size={16} /> Modal Pollar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>
+              <ShieldCheck size={14} style={{ color: 'var(--color-emerald)' }} />
+              <span>Custodia y firma gestionadas por Pollar Core (Sin Private Key)</span>
+            </div>
 
             {availableOffline <= 0 && (
               <div style={{ padding: 14, borderRadius: 14, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', border: '1px solid rgba(244,63,94,0.2)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -337,17 +493,80 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
 
       {/* Payment QR */}
       {pendingTx && paymentQr && mode === 'pay' && (
-        <div className="pollar-panel" style={{ border: '2px solid var(--color-emerald)', alignItems: 'center', textAlign: 'center', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)', background: 'var(--color-emerald-bg)', padding: '6px 14px', borderRadius: 20 }}>
-            <ShieldCheck size={18} /> Pago Criptográfico Firmado (Ed25519)
+        <div className="pollar-panel" style={{ border: '2px solid var(--pollar-blue)', alignItems: 'center', textAlign: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '6px 14px', borderRadius: 20 }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--pollar-blue)', animation: 'pulse 1.5s infinite' }} />
+            Paso 1/2: Pago Firmado (Esperando Lectura en Cobrar)
           </div>
-          <img src={paymentQr} alt="QR Pago" style={{ width: 220, height: 220, borderRadius: 18, background: '#FFFFFF', padding: 12, border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }} />
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            background: '#FFFFFF',
+            padding: 16,
+            borderRadius: 22,
+            border: '1px solid rgba(0,0,0,0.1)',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)'
+          }}>
+            <img
+              src={paymentQr}
+              alt="QR Pago"
+              style={{
+                width: 220,
+                height: 220,
+                display: 'block',
+                borderRadius: 8,
+                imageRendering: 'pixelated',
+                border: '1px solid #000000'
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(paymentPayloadString);
+                setCopiedPayment(true);
+                setTimeout(() => setCopiedPayment(false), 2000);
+              }}
+              style={{
+                marginTop: 10,
+                padding: '6px 12px',
+                borderRadius: 12,
+                background: '#F1F5F9',
+                border: '1px solid #E2E8F0',
+                color: '#475569',
+                fontSize: 11,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer'
+              }}
+            >
+              {copiedPayment ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+              {copiedPayment ? '¡Payload copiado!' : 'Copiar Payload del QR'}
+            </button>
+            <span style={{ fontSize: 10, fontWeight: 800, color: '#000000', marginTop: 8, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              QR Blanco y Negro de Alta Legibilidad
+            </span>
+          </div>
           <div>
             <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>{pendingTx.payload.amount} {pendingTx.payload.asset}</span>
-            <p style={{ fontSize: 12, color: 'var(--color-emerald)', fontWeight: 700, marginTop: 4 }}>
-              Muestra este QR al cobrador para que lo escanee y contrafirme
+            <p style={{ fontSize: 12, color: 'var(--pollar-blue)', fontWeight: 700, marginTop: 4 }}>
+              Muestra este QR al cobrador para que lo escanee en el apartado de Cobrar y concluya la transacción
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              cancelPendingPayment(pendingTx.txHash);
+              setPendingTx(null);
+              setFeedback({ type: 'info', message: 'Emisión de pago cancelada.' });
+            }}
+            className="pollar-btn-secondary"
+            style={{ minWidth: 180, fontSize: 12 }}
+          >
+            <X size={14} /> Cancelar Emisión
+          </button>
         </div>
       )}
 
@@ -379,8 +598,17 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               color: 'var(--color-emerald)', fontSize: 13, fontWeight: 800,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
-              <Camera size={18} /> Escanear QR de Pago
+              <Camera size={18} /> Escanear con Cámara
             </button>
+            <label style={{
+              width: 52, padding: '14px 0', borderRadius: 16,
+              background: 'var(--bg-card-muted)', border: '1.5px solid var(--border-subtle)',
+              color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer'
+            }} title="Cargar imagen de QR">
+              <Upload size={18} />
+              <input type="file" accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+            </label>
             {onOpenTransport && (
               <button onClick={onOpenTransport} style={{
                 width: 52, padding: '14px 0', borderRadius: 16,
@@ -398,13 +626,65 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
             color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-            <QrCode size={18} /> Ingresar payload manualmente
+            <QrCode size={18} /> Ingresar payload manualmente (Cobro o Pago)
           </button>
 
           {/* Invoice QR */}
-          <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--pollar-blue-light)', borderRadius: 20, border: '2px dashed rgba(0,98,255,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)' }}>Factura para el cliente</span>
-            {invoiceQr && <img src={invoiceQr} alt="Invoice QR" style={{ width: 180, height: 180, borderRadius: 14, background: '#FFFFFF', padding: 10 }} />}
+          <div style={{ textAlign: 'center', padding: '20px 16px', background: '#F8FAFC', borderRadius: 20, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>Factura QR de Cobro (Blanco y Negro)</span>
+            {invoiceQr && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                background: '#FFFFFF',
+                padding: 14,
+                borderRadius: 18,
+                border: '1px solid rgba(0,0,0,0.1)',
+                boxShadow: '0 8px 20px -4px rgba(0,0,0,0.06)'
+              }}>
+                <img
+                  src={invoiceQr}
+                  alt="Invoice QR"
+                  style={{
+                    width: 190,
+                    height: 190,
+                    display: 'block',
+                    borderRadius: 8,
+                    imageRendering: 'pixelated',
+                    border: '1px solid #000000'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(invoicePayloadString);
+                    setCopiedInvoice(true);
+                    setTimeout(() => setCopiedInvoice(false), 2000);
+                  }}
+                  style={{
+                    marginTop: 8,
+                    padding: '6px 12px',
+                    borderRadius: 12,
+                    background: '#F1F5F9',
+                    border: '1px solid #E2E8F0',
+                    color: '#475569',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {copiedInvoice ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+                  {copiedInvoice ? '¡Payload copiado!' : 'Copiar Payload del QR'}
+                </button>
+                <span style={{ fontSize: 10, fontWeight: 800, color: '#000000', marginTop: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  QR Blanco y Negro de Alta Legibilidad
+                </span>
+              </div>
+            )}
             <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--pollar-blue)' }}>{receiveAmount} {activeWallet.asset}</span>
           </div>
 
@@ -419,36 +699,68 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         </div>
       )}
 
-      {/* Manual Counter-Sign Modal */}
+      {/* Manual Counter-Sign / QR Payload Modal */}
       {showManualCounterSign && (
         <div className="pollar-modal-overlay" onClick={() => setShowManualCounterSign(false)}>
           <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Contrafirmar Pago Manual</h3>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>Procesar Payload de QR</h3>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>Pega el JSON de un cobro o de un pago firmado</p>
+              </div>
               <button onClick={() => setShowManualCounterSign(false)} className="pollar-icon-btn"><X size={18} /></button>
             </div>
             <div style={{ paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <textarea
                 value={manualPayload}
                 onChange={(e) => handleParseManualPayload(e.target.value)}
-                placeholder='Pega el JSON del payload de pago aquí...'
+                placeholder='Pega el JSON del QR aquí (cobro o pago)...'
                 style={{ width: '100%', height: 120, padding: 12, borderRadius: 14, border: '1px solid var(--border-subtle)', fontSize: 11, fontFamily: 'var(--font-mono)', resize: 'vertical' }}
               />
               {payloadError && <div style={{ padding: 10, borderRadius: 12, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', fontSize: 12 }}>{payloadError}</div>}
-              {parsedPayload && (
-                <div style={{ padding: 12, borderRadius: 14, background: 'var(--color-emerald-bg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-emerald)' }}>Payload válido</span>
-                  <span style={{ fontSize: 18, fontWeight: 900 }}>{parsedPayload.tx.payload.amount} {parsedPayload.tx.payload.asset}</span>
-                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>De: {parsedPayload.tx.payload.payer?.slice(0, 16)}...</span>
+              
+              {/* Invoice Preview */}
+              {parsedPayload && parsedPayload.type === 'INVOICE' && (
+                <div style={{ padding: 12, borderRadius: 14, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0,98,255,0.2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)' }}>✓ Factura de Cobro Válida</span>
+                  <span style={{ fontSize: 18, fontWeight: 900 }}>{parsedPayload.invoice.amount} {parsedPayload.invoice.asset}</span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>Destinatario: {parsedPayload.invoice.payee?.slice(0, 16)}...</span>
+                  {parsedPayload.invoice.memo && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Concepto: {parsedPayload.invoice.memo}</span>
+                  )}
                 </div>
               )}
-              <button onClick={handleManualCounterSign} disabled={!parsedPayload || isCounterSigning} className="pollar-btn-primary">
-                {isCounterSigning ? 'Contrafirmando...' : 'Confirmar Contrafirma'}
-              </button>
+
+              {/* Payment Preview */}
+              {parsedPayload && parsedPayload.type === 'PAYMENT' && (
+                <div style={{ padding: 12, borderRadius: 14, background: 'var(--color-emerald-bg)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-emerald)' }}>✓ Pago Firmado Válido</span>
+                  <span style={{ fontSize: 18, fontWeight: 900 }}>{parsedPayload.tx.payload.amount} {parsedPayload.tx.payload.asset}</span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>Pagador: {parsedPayload.tx.payload.payer?.slice(0, 16)}...</span>
+                </div>
+              )}
+
+              {parsedPayload?.type === 'INVOICE' ? (
+                <button onClick={handleApplyInvoicePayload} className="pollar-btn-primary">
+                  Cargar Factura para Pagar
+                </button>
+              ) : (
+                <button onClick={handleManualCounterSign} disabled={!parsedPayload || isCounterSigning} className="pollar-btn-emerald">
+                  {isCounterSigning ? 'Contrafirmando...' : 'Confirmar Contrafirma'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* Interactive Camera QR Scanner Modal */}
+      <QRScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={(decodedText) => handleScannedData(decodedText)}
+        title={mode === 'pay' ? 'Escanear QR de Factura' : 'Escanear QR de Pago'}
+      />
     </div>
   );
 }

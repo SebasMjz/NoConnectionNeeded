@@ -25,24 +25,31 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
     setLoadingAction(type);
 
     try {
-      if (type === 'freighter') {
-        let address = deviceA.publicKey;
+      if (type === 'pollar') {
+        if (typeof pollar?.openLoginModal === 'function') {
+          pollar.openLoginModal();
+        } else if (typeof pollar?.login === 'function') {
+          await pollar.login();
+        }
+        setFeedback({ type: 'success', message: 'Abriendo autenticación Pollar Core...' });
+      } else if (type === 'freighter') {
+        let address = null;
         if (typeof window !== 'undefined' && window.freighterApi?.getPublicKey) {
           try {
             address = await window.freighterApi.getPublicKey();
           } catch (e) {}
         }
+        if (!address) throw new Error('No se detectó la extensión Freighter o el usuario rechazó la conexión.');
         await loginWithWallet(address);
         setFeedback({ type: 'success', message: 'Billetera Freighter conectada' });
       } else if (type === 'albedo') {
-        await loginWithWallet(deviceA.publicKey);
-        setFeedback({ type: 'success', message: 'Albedo conectada' });
+        throw new Error('Para conectar Albedo usa la autenticación Web3 de Pollar.');
       } else if (type === 'generated') {
         const newKeys = generateRealStellarKeypair();
-        await linkCustomAccount(newKeys.secretKey, 'Billetera Nueva');
+        await linkCustomAccount(newKeys.publicKey, 'Billetera Stellar');
         await loginWithWallet(newKeys.publicKey);
         requestFriendbotFunding(newKeys.publicKey);
-        setFeedback({ type: 'success', message: 'Nueva billetera creada (+10k XLM Testnet)' });
+        setFeedback({ type: 'success', message: 'Billetera creada y fondeada en Testnet (+10k XLM)' });
       }
 
       setTimeout(() => {
@@ -70,7 +77,7 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
         onClose();
       }, 700);
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || 'Clave no válida (debe ser S... o G...)' });
+      setFeedback({ type: 'error', message: err.message || 'Dirección no válida (debe ser G...)' });
     } finally {
       setLoadingAction('');
     }
@@ -136,6 +143,24 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
         {/* Options View */}
         {activeTab === 'connect' && (
           <div className="space-y-2.5">
+            {/* Pollar Core Option */}
+            <button
+              onClick={() => handleConnectOption('pollar')}
+              disabled={!!loadingAction}
+              className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200 transition-all group text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0062FF] to-[#4F46E5] flex items-center justify-center text-white font-black text-sm shadow-sm">
+                  P
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">Billetera Pollar Core</span>
+                  <span className="text-[11px] text-[#0062FF] font-semibold">Custodia WaaS (Sin Private Key)</span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-blue-500 group-hover:translate-x-0.5 transition-all" />
+            </button>
+
             {/* Connect options */}
             <button
               onClick={() => handleConnectOption('freighter')}
@@ -153,23 +178,6 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
               </div>
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0062FF] transition-all" />
             </button>
-
-            <button
-              onClick={() => handleConnectOption('albedo')}
-              disabled={!!loadingAction}
-              className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200 transition-all group text-left"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center text-white font-black text-sm shadow-sm">
-                  A
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">Albedo Web3</span>
-                  <span className="text-[11px] text-slate-500">Firma web y móvil</span>
-                </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0062FF] transition-all" />
-            </button>
           </div>
         )}
 
@@ -178,14 +186,14 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
           <form onSubmit={handleManualSubmit} className="space-y-3.5">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Clave Secreta (S...) o Pública (G...)
+                Dirección Pública Stellar (G...)
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={manualKey}
                   onChange={(e) => setManualKey(e.target.value)}
-                  placeholder="Ej: SDM7... o GDM7..."
+                  placeholder="Ej: GDM7... (No se requiere clave privada)"
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0062FF]"
                   required
                 />

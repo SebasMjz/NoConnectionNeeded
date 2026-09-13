@@ -100,7 +100,7 @@ function PollarAuthBridge({ children }) {
               publicKey: newAddress,
               secretKey: null,
               name: 'Billetera Pollar',
-              isReadOnly: true,
+              isReadOnly: false,
               isPollar: true,
               provider: 'pollar',
               custody: 'internal',
@@ -115,9 +115,9 @@ function PollarAuthBridge({ children }) {
       if (address) {
         linkWallet({
           publicKey: address,
-          secretKey: null, // Pollar administra la custodia y firma de la clave
+          secretKey: null, // Pollar administra la custodia y firma de la clave on-chain
           name: 'Billetera Pollar',
-          isReadOnly: true,
+          isReadOnly: false,
           isPollar: true,
           provider: wallet?.provider || 'pollar',
           custody: wallet?.custody || 'internal',

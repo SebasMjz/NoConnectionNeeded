@@ -2,6 +2,7 @@ package pollarcore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -36,6 +37,10 @@ func GenerateNewKeyPairJSON() (string, error) {
 
 // CreatePaymentPayloadJSON generates a payer payload
 func (e *PollarEngine) CreatePaymentPayloadJSON(payeePubKey string, amount float64, memo string) (string, error) {
+	if payeePubKey == e.Vault.OwnerPublicKey {
+		return "", errors.New("cannot send payment to the same wallet: payee is identical to payer")
+	}
+
 	nonce, err := e.Vault.AuthorizeAndDeductPayment(amount)
 	if err != nil {
 		return "", err
@@ -90,6 +95,10 @@ func (e *PollarEngine) ProcessAndCounterSign(txJSON, payeePrivKeyHex string) (st
 	var tx DualSignedTransaction
 	if err := json.Unmarshal([]byte(txJSON), &tx); err != nil {
 		return "", fmt.Errorf("invalid tx JSON: %w", err)
+	}
+
+	if tx.Payload.Payer == tx.Payload.Payee {
+		return "", errors.New("invalid transaction: payer and payee cannot be the same wallet")
 	}
 
 	// Counter-sign receipt

@@ -1,6 +1,7 @@
 package pollarcore
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -103,3 +104,45 @@ func TestPollarCoreFlow(t *testing.T) {
 		t.Fatalf("Failed to broadcast batch to Stellar: %v", err)
 	}
 }
+
+func TestPreventSendingToSameWallet(t *testing.T) {
+	payerKeys, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("Failed to generate keys: %v", err)
+	}
+
+	engine := NewPollarEngine(payerKeys.PublicKey, "USDT", 100.0)
+	_ = engine.Vault.AllocateOfflineFunds(20.0)
+
+	// Intento de emitir pago a la misma wallet
+	_, err = engine.CreatePaymentPayloadJSON(payerKeys.PublicKey, 5.0, "Autopago prohibido")
+	if err == nil {
+		t.Fatal("Expected error creating payment to same wallet, but got nil")
+	}
+
+	// Intento de contrafirmar una transacción donde payer == payee
+	fakePayload := TransactionPayload{
+		ID:        "TX-SELF-1",
+		Payer:     payerKeys.PublicKey,
+		Payee:     payerKeys.PublicKey,
+		Amount:    5.0,
+		Asset:     "USDT",
+		Nonce:     1,
+		Memo:      "Test",
+		Timestamp: 1000,
+	}
+	txHash, signedTx, _ := SignTransactionPayload(&fakePayload, payerKeys.PrivateKey)
+	dualTx := DualSignedTransaction{
+		Payload:        fakePayload,
+		TxHash:         txHash,
+		PayerSignature: signedTx,
+		Status:         "PENDING_COUNTER_SIGN",
+	}
+	importBytes, _ := json.Marshal(dualTx)
+
+	_, err = engine.ProcessAndCounterSign(string(importBytes), payerKeys.PrivateKey)
+	if err == nil {
+		t.Fatal("Expected error counter-signing transaction with identical payer and payee, but got nil")
+	}
+}
+

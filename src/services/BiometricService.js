@@ -1,15 +1,17 @@
-/**
- * BiometricAuthService — Biometric auth for mobile (Capacitor) and web (WebAuthn).
- *
- * On mobile: uses capacitor-native-biometric for fingerprint/face unlock.
- * On web: uses WebAuthn (PublicKeyCredential).
- */
+import { Capacitor } from '@capacitor/core';
 
-let CapacitorNativeBiometric;
-try {
-  CapacitorNativeBiometric = require('capacitor-native-biometric').NativeBiometric;
-} catch (e) {
-  // Web-only fallback
+let CapacitorNativeBiometric = null;
+async function getNativeBiometric() {
+  if (CapacitorNativeBiometric) return CapacitorNativeBiometric;
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const mod = await import('capacitor-native-biometric');
+      CapacitorNativeBiometric = mod.NativeBiometric;
+    } catch (e) {
+      console.warn('NativeBiometric load error:', e);
+    }
+  }
+  return CapacitorNativeBiometric;
 }
 
 const BIOMETRIC_CREDS_KEY = 'pollar_biometric_creds';
@@ -25,9 +27,10 @@ export class BiometricAuthService {
    */
   async initialize() {
     // Try mobile plugin first
-    if (CapacitorNativeBiometric) {
+    const nativeBio = await getNativeBiometric();
+    if (nativeBio) {
       try {
-        const result = await CapacitorNativeBiometric.isAvailable();
+        const result = await nativeBio.isAvailable();
         if (result.isAvailable) {
           this._platform = 'mobile';
           this.isAvailable = true;
@@ -81,8 +84,10 @@ export class BiometricAuthService {
 
     if (this._platform === 'mobile') {
       try {
+        const nativeBio = await getNativeBiometric();
+        if (!nativeBio) throw new Error('Plugin biométrico no disponible');
         // Verify first (user must authenticate to enable biometric)
-        await CapacitorNativeBiometric.verifyIdentity({
+        await nativeBio.verifyIdentity({
           reason: 'Habilitar inicio de sesión con biometría',
           title: 'Pollar P2P',
           subtitle: 'Verifica tu identidad',
@@ -145,7 +150,9 @@ export class BiometricAuthService {
 
     if (this._platform === 'mobile') {
       try {
-        await CapacitorNativeBiometric.verifyIdentity({
+        const nativeBio = await getNativeBiometric();
+        if (!nativeBio) throw new Error('Plugin biométrico no disponible');
+        await nativeBio.verifyIdentity({
           reason: 'Iniciar sesión con biometría',
           title: 'Pollar P2P',
           subtitle: 'Verifica tu identidad para continuar',
