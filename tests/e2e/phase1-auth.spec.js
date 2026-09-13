@@ -159,9 +159,9 @@ test('P1: Show/hide password toggle changes input type', async ({ page }) => {
 test('P1: Quick access preset still works (no regression)', async ({ page }) => {
   await clearAppState(page);
 
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
-  await expect(page.locator('text=pollar pay')).toBeVisible();
+  await expect(page.locator('text=PAGADOR').first()).toBeVisible();
 });
 
 test('P1: Google login still works (no regression)', async ({ page }) => {
