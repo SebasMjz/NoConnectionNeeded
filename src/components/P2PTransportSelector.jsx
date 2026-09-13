@@ -6,13 +6,6 @@ import { getBluetoothService } from '../services/BluetoothService';
 import { getNFCService } from '../services/NFCService';
 import { getWifiDirectService } from '../services/WifiDirectService';
 
-const TRANSPORT_INFO = {
-  qr: { label: 'Código QR', icon: QrCode, color: '#0062FF' },
-  bluetooth: { label: 'Bluetooth', icon: Bluetooth, color: '#7c3aed' },
-  nfc: { label: 'NFC', icon: Nfc, color: '#10b981' },
-  wifi: { label: 'WiFi Local', icon: Wifi, color: '#f59e0b' },
-};
-
 export default function P2PTransportSelector({ onClose, payload }) {
   const [availableTransports, setAvailableTransports] = useState([]);
   const [checking, setChecking] = useState(true);
@@ -48,17 +41,19 @@ export default function P2PTransportSelector({ onClose, payload }) {
   };
 
   const handleSelect = async (transportId) => {
-    if (!payload) {
-      setStatus('No hay payload para compartir');
+    if (transportId === 'qr') {
+      onClose();
       return;
     }
 
-    const json = JSON.stringify(payload);
+    if (!payload) {
+      setStatus('Primero crea un pago (Firmar QR) para compartir el payload.');
+      setTimeout(() => setStatus(''), 4000);
+      return;
+    }
 
     try {
-      if (transportId === 'qr') {
-        onClose();
-      } else if (transportId === 'bluetooth') {
+      if (transportId === 'bluetooth') {
         setStatus('Buscando dispositivos Bluetooth...');
         const bt = getBluetoothService();
         const device = await bt.startScan((peer) => {
@@ -137,22 +132,20 @@ export default function P2PTransportSelector({ onClose, payload }) {
       )}
 
       {/* Copy to clipboard fallback */}
-      {payload && (
-        <div style={{ marginTop: 16, padding: 12, borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>O copia el payload para compartir por cualquier medio:</span>
-            <button onClick={handleCopy} style={{
-              padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-              background: copied ? 'var(--color-emerald-bg)' : 'var(--pollar-blue-light)',
-              color: copied ? 'var(--color-emerald)' : 'var(--pollar-blue)',
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? 'Copiado' : 'Copiar'}
-            </button>
-          </div>
+      <div style={{ marginTop: 16, padding: 12, borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>O copia el payload para compartir por cualquier medio:</span>
+          <button onClick={handleCopy} style={{
+            padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+            background: copied ? 'var(--color-emerald-bg)' : 'var(--pollar-blue-light)',
+            color: copied ? 'var(--color-emerald)' : 'var(--pollar-blue)',
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? 'Copiado' : 'Copiar'}
+          </button>
         </div>
-      )}
+      </div>
 
       {availableTransports.length === 1 && (
         <div style={{ marginTop: 12, padding: 10, borderRadius: 12, background: 'var(--color-amber-bg)', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-amber)', fontSize: 11, fontWeight: 600 }}>
