@@ -906,3 +906,44 @@ button {
   50% { transform: translateY(90px); opacity: 1; }
   100% { transform: translateY(-90px); opacity: 0.3; }
 }
+
+/* NFC Tap-to-Pay Radiating Wave */
+@keyframes pollar-nfc-radiate {
+  0% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  65% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 24px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.pollar-nfc-pulse {
+  animation: pollar-nfc-radiate 1.8s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Bluetooth Pulse Animation */
+@keyframes pollar-ble-pulse {
+  0% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(0, 98, 255, 0.7);
+  }
+  65% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 24px rgba(0, 98, 255, 0);
+  }
+  100% {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(0, 98, 255, 0);
+  }
+}
+
+.pollar-ble-pulse {
+  animation: pollar-ble-pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
