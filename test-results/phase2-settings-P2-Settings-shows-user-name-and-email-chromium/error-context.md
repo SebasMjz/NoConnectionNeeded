@@ -40,7 +40,7 @@ Call log:
   - strong: "10.00"
   - text: "• Recibido:"
   - strong: "0.00"
-  - text: GBANFPOAM2NZLDSSD7RTYNLXZ6N5NZL7AWFOKHOOHFM4MZ5WC3PZDR6Y
+  - text: GBZ6OFO6XDHDZRN5NAKLC6T2SIV7O2H3YHV26SSUTWSWDIN77B6LH6HS
   - button "Pagar"
   - button "Bóveda"
   - button "+10k XLM"

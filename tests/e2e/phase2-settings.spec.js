@@ -36,7 +36,7 @@ test('P2: Settings shows user name and email', async ({ page }) => {
   await page.locator('[title="Configuración y Perfil"]').click();
   await expect(page.locator('text=Cuenta')).toBeVisible({ timeout: 3000 });
   // Should show preset user info
-  await expect(page.locator('text=pollar pay')).toBeVisible();
+  await expect(page.locator('text=Pagador Demo').or(page.locator('text=Comercio POS Demo'))).toBeVisible();
 });
 
 test('P2: Settings has biometric toggle row', async ({ page }) => {

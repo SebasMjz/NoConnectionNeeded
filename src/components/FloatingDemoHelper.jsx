@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { Sparkles, UserCheck, Store, Zap, X, Check, ChevronUp, RotateCcw } from 'lucide-react';
+import { Sparkles, X, Check, ChevronUp, RotateCcw, Zap } from 'lucide-react';
 
-export default function FloatingDemoHelper({ onFillEmail, onSelectWallet }) {
+export default function FloatingDemoHelper() {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedNote, setCopiedNote] = useState('');
-  const { deviceA, loginAsPreset, requestFriendbotFunding, resetDemoData } = useWallet();
+  const { wallet, loginAsPreset, requestFriendbotFunding, resetDemoData, role } = useWallet();
 
   const handleQuickPreset = (type) => {
     loginAsPreset(type);
@@ -14,90 +14,113 @@ export default function FloatingDemoHelper({ onFillEmail, onSelectWallet }) {
   };
 
   return (
-    <div className="fixed bottom-24 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end">
+    <div style={{ position: 'fixed', bottom: 80, right: 16, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
       {copiedNote && (
-        <div className="mb-2 px-3.5 py-2 rounded-2xl text-xs font-bold shadow-lg animate-bounce flex items-center gap-1.5 bg-[#0062FF] text-white">
-          <Check className="w-4 h-4" /> {copiedNote}
+        <div style={{
+          marginBottom: 8, padding: '8px 16px', borderRadius: 20,
+          background: '#0062FF', color: '#FFFFFF', fontSize: 12, fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 6
+        }}>
+          <Check size={14} /> {copiedNote}
         </div>
       )}
-
+      
       {isOpen && (
-        <div className="mb-3 w-76 rounded-3xl p-4 shadow-2xl space-y-3 bg-white border border-slate-200 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-xl bg-blue-50 text-[#0062FF]">
-                <Sparkles className="w-4 h-4" />
+        <div style={{
+          marginBottom: 12, width: 280, borderRadius: 24, padding: 16,
+          background: '#FFFFFF', border: '1px solid #E2E8F0',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.12)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ padding: 6, borderRadius: 10, background: '#EEF5FF' }}>
+                <Sparkles size={16} style={{ color: '#0062FF' }} />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-900 block">Acceso Rápido Demo</span>
-                <span className="text-[10px] text-slate-400">Autocompletar sesión</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#1E293B' }}>Demo Rápido</span>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">
-              <X className="w-3.5 h-3.5" />
+            <button onClick={() => setIsOpen(false)} style={{ padding: 6, borderRadius: 8, border: 'none', background: '#F1F5F9', cursor: 'pointer' }}>
+              <X size={14} style={{ color: '#64748B' }} />
             </button>
           </div>
 
-          <div className="space-y-2">
-            <button 
-              onClick={() => handleQuickPreset('pagador')} 
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-blue-50/60 hover:bg-blue-50 border border-blue-100 transition-all text-left"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#0062FF] text-white flex items-center justify-center font-bold text-xs">
-                  A
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">Pagador A</span>
-                  <span className="text-[10px] text-slate-500 font-mono">pagador@pollar.io</span>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-[#0062FF]">Entrar</span>
-            </button>
-
-            <button 
-              onClick={() => handleQuickPreset('comercio')} 
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-100 transition-all text-left"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-                  B
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">Comercio POS B</span>
-                  <span className="text-[10px] text-slate-500 font-mono">pos.tienda@pollar.io</span>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-emerald-600">Entrar</span>
-            </button>
-          </div>
-
-          <div className="flex gap-2 pt-2 border-t border-slate-100">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button
-              onClick={() => requestFriendbotFunding(deviceA.publicKey)}
-              className="flex-1 py-2 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-bold flex items-center justify-center gap-1 transition-all"
+              onClick={() => handleQuickPreset('pagador')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 12, borderRadius: 16, background: '#EEF5FF',
+                border: '1px solid rgba(0,98,255,0.15)', cursor: 'pointer', textAlign: 'left'
+              }}
             >
-              <Zap className="w-3.5 h-3.5 text-amber-500" /> +10k XLM
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: '#0062FF', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>A</div>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#1E293B', display: 'block' }}>Pagador A</span>
+                  <span style={{ fontSize: 10, color: '#64748B' }}>pagador@pollar.io</span>
+                </div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#0062FF' }}>Entrar</span>
+            </button>
+
+            <button
+              onClick={() => handleQuickPreset('comercio')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: 12, borderRadius: 16, background: '#ECFDF5',
+                border: '1px solid rgba(16,185,129,0.15)', cursor: 'pointer', textAlign: 'left'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: '#10B981', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>B</div>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#1E293B', display: 'block' }}>Comercio B</span>
+                  <span style={{ fontSize: 10, color: '#64748B' }}>comercio@pollar.io</span>
+                </div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981' }}>Entrar</span>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F1F5F9' }}>
+            <button
+              onClick={() => requestFriendbotFunding(wallet?.publicKey)}
+              style={{
+                flex: 1, padding: '8px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                background: '#FFFBEB', color: '#B45309', border: '1px solid rgba(245,158,11,0.2)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+              }}
+            >
+              <Zap size={12} /> +10k XLM
             </button>
             <button
               onClick={() => resetDemoData()}
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold flex items-center gap-1 transition-all"
-              title="Reiniciar Demo"
+              style={{
+                padding: '8px 12px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                background: '#F1F5F9', color: '#64748B', border: 'none', cursor: 'pointer'
+              }}
+              title="Reiniciar"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw size={14} />
             </button>
           </div>
         </div>
       )}
 
-      {/* Floating Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-[#0052EE] to-[#0070F3] text-white font-bold text-xs shadow-[0_8px_25px_rgba(0,98,255,0.4)] hover:shadow-[0_10px_30px_rgba(0,98,255,0.55)] active:scale-95 transition-all"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '12px 20px', borderRadius: 30,
+          background: 'linear-gradient(135deg, #0052EE 0%, #0070F3 100%)',
+          color: '#FFFFFF', fontSize: 12, fontWeight: 700,
+          border: 'none', cursor: 'pointer',
+          boxShadow: '0 8px 25px rgba(0,98,255,0.4)'
+        }}
       >
-        <Sparkles className="w-4 h-4 text-white" />
-        <span>Demo 1-Click</span>
-        <ChevronUp className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <Sparkles size={16} />
+        <span>Demo</span>
       </button>
     </div>
   );

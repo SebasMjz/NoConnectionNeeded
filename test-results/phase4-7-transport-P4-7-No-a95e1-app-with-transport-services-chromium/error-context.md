@@ -58,7 +58,7 @@ Call log:
           - generic [ref=f1e55]:
             - text: "Recibido:"
             - strong [ref=f1e56]: "0.00"
-      - generic [ref=f1e57] [cursor=pointer]: GCOMHD7FVVAUGAA3RS5KI2TF5DU764IMFIIXYPYDOOXB4DFZCZCWLF2E
+      - generic [ref=f1e57] [cursor=pointer]: GCMQ55DY46KCZGQIWFQ5W7WV5ADAEUU3TKGWKDKMHITVLH64IWMWLDZR
       - generic [ref=f1e62]:
         - button "Pagar" [ref=f1e63] [cursor=pointer]
         - button "Bóveda" [ref=f1e69] [cursor=pointer]

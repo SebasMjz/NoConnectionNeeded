@@ -14,7 +14,6 @@ async function clearAppState(page) {
     localStorage.removeItem('pollar_settings');
     localStorage.removeItem('pollar_wallets');
     localStorage.removeItem('pollar_biometric_creds');
-    localStorage.removeItem('pollar_users');
   });
   await page.reload();
   await page.waitForLoadState('domcontentloaded');
@@ -24,10 +23,9 @@ async function clearAppState(page) {
 
 test('P4: BluetoothService file exists with correct exports', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
-  // Verify the BluetoothService file exists and has expected exports
   const filePath = path.join(REPO, 'src/services/BluetoothService.js');
   expect(fs.existsSync(filePath)).toBe(true);
 
@@ -41,7 +39,7 @@ test('P4: BluetoothService file exists with correct exports', async ({ page }) =
 
 test('P5: NFCService file exists with correct exports', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   const filePath = path.join(REPO, 'src/services/NFCService.js');
@@ -56,7 +54,7 @@ test('P5: NFCService file exists with correct exports', async ({ page }) => {
 
 test('P6: WifiDirectService file exists with correct exports', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   const filePath = path.join(REPO, 'src/services/WifiDirectService.js');
@@ -71,7 +69,7 @@ test('P6: WifiDirectService file exists with correct exports', async ({ page }) 
 
 test('P7: P2PTransportSelector component file exists', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   const filePath = path.join(REPO, 'src/components/P2PTransportSelector.jsx');
@@ -85,12 +83,13 @@ test('P7: P2PTransportSelector component file exists', async ({ page }) => {
   expect(content).toMatch(/Wifi|wifi/);
 });
 
-test('P7: Transfer tab shows P2P payment terminal', async ({ page }) => {
+test('P7: Pagar tab shows P2P payment terminal', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
-  await page.locator('text=Transferir').click();
+  // Click "Pagar" tab in navigation
+  await page.getByRole('navigation').getByText('Pagar').click();
   await page.waitForTimeout(500);
 
   // Should show P2P payment terminal content
@@ -99,7 +98,7 @@ test('P7: Transfer tab shows P2P payment terminal', async ({ page }) => {
 
 test('P4-7: AndroidManifest has Bluetooth/NFC/WiFi permissions', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   const manifestPath = path.join(REPO, 'android/app/src/main/AndroidManifest.xml');
@@ -124,22 +123,16 @@ test('P4-7: No runtime errors when loading app with transport services', async (
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
 
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   // Navigate through all tabs to ensure no errors
-  await page.locator('text=Transferir').click();
+  await page.getByRole('navigation').getByText('Pagar').click();
   await page.waitForTimeout(300);
   await page.locator('text=Sincronizar').click();
   await page.waitForTimeout(300);
   await page.locator('text=Simulador').click();
   await page.waitForTimeout(300);
-  await page.locator('text=Bóveda').first().click();
-  await page.waitForTimeout(300);
 
-  const realErrors = errors.filter(e =>
-    !e.includes('404') &&
-    !e.includes('Failed to load resource')
-  );
-  expect(realErrors).toHaveLength(0);
+  expect(errors).toHaveLength(0);
 });
