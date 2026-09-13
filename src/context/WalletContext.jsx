@@ -19,6 +19,8 @@ import {
   buildRealEvmMerkleTree,
   computeEvmMerkleLeafHash,
   submitRealEvmBatchTransaction,
+  depositToVault,
+  depositTokenToVault,
   EVM_NETWORKS,
   getEvmBalance,
   fetchRealEvmAccountBalances,
@@ -276,7 +278,8 @@ export function WalletProvider({ children }) {
             nativeBalance: resA.nativeBalance,
             asset: 'USDC',
             symbol: resA.nativeSymbol,
-            vaultState: resA.vaultState
+            vaultState: resA.vaultState,
+            tokenVaultState: resA.tokenVaultState
           }));
         }
 
@@ -565,15 +568,22 @@ export function WalletProvider({ children }) {
 
       const totalSyncedAmount = pendingSyncTxs.reduce((acc, tx) => acc + tx.payload.amount, 0);
       const currentSubmitter = activeDevice === 'device_b' ? 'Dispositivo B (Comercio)' : 'Dispositivo A (Pagador)';
+      const submitterAccount = activeDevice === 'device_b' ? deviceB : deviceA;
 
       let syncResult;
 
       if (isEvm) {
+        // Extract real payer and payee from the batch transactions
+        const batchPayer = pendingSyncTxs[0]?.payload?.payer || deviceA.publicKey;
+        const batchPayee = pendingSyncTxs[0]?.payload?.payee || deviceB.publicKey;
+
         // Broadcast to EVM (Sepolia / HSK / Base)
         const evmRes = await submitRealEvmBatchTransaction({
+          submitterPrivateKey: submitterAccount.secretKey,
+          submitterAddress: submitterAccount.publicKey,
           payerPrivateKey: deviceA.secretKey,
-          payerAddress: deviceA.publicKey,
-          payeeAddress: deviceB.publicKey,
+          payerAddress: batchPayer,
+          payeeAddress: batchPayee,
           amount: totalSyncedAmount,
           merkleRootHash: merkleTree.rootHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
           networkId: activeEvmChain
@@ -606,7 +616,7 @@ export function WalletProvider({ children }) {
           syncedBy: currentSubmitter,
           timestamp: Date.now(),
           explorerUrl: evmRes.explorerUrl,
-          simulatedNotice: evmRes.simulatedNotice
+          usedVaultContract: evmRes.usedVaultContract
         };
       } else {
         // Broadcast to Stellar Horizon
@@ -666,11 +676,46 @@ export function WalletProvider({ children }) {
 
       setLastSyncResult(syncResult);
       setIsSyncing(false);
+
+      if (effectiveOnline) {
+        refreshOnlineBalance().catch(e => console.warn('Post-sync balance refresh notice:', e));
+      }
+
       return syncResult;
     } catch (err) {
       setIsSyncing(false);
       throw err;
     }
+  };
+
+  // Fund EVM Smart Contract Vault (locks Sepolia ETH in PollarVault for Payer A)
+  const fundEvmVault = async (amountEth = '0.001') => {
+    if (!isEvm) throw new Error('El depósito en bóveda sólo está disponible en redes EVM.');
+    const res = await depositToVault({
+      privateKey: deviceA.secretKey,
+      amountEth,
+      networkId: activeEvmChain
+    });
+    await refreshOnlineBalance();
+    return res;
+  };
+
+  // Fund EVM Smart Contract Vault with ERC-20 Tokens (USDC / USDT)
+  const fundEvmTokenVault = async (amountTokens = '1') => {
+    if (!isEvm) throw new Error('El depósito en bóveda sólo está disponible en redes EVM.');
+    const network = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
+    if (!network.usdcAddress) {
+      throw new Error(`No hay token USDC configurado para ${network.name}`);
+    }
+    const res = await depositTokenToVault({
+      privateKey: deviceA.secretKey,
+      tokenAddress: network.usdcAddress,
+      amountTokens,
+      decimals: network.usdcDecimals || 6,
+      networkId: activeEvmChain
+    });
+    await refreshOnlineBalance();
+    return res;
   };
 
   // Backwards compatible alias for Stellar sync
@@ -896,6 +941,8 @@ export function WalletProvider({ children }) {
       linkCustomAccount,
       refreshOnlineBalance,
       requestFriendbotFunding,
+      fundEvmVault,
+      fundEvmTokenVault,
       isRefreshingBalance
     }}>
       {children}

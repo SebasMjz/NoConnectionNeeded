@@ -18,12 +18,13 @@ export const EVM_NETWORKS = {
     blockExplorer: 'https://sepolia.etherscan.io',
     faucetUrl: 'https://faucet.circle.com/',
     ethFaucetUrl: 'https://sepoliafaucet.com/',
+    googleFaucetUrl: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia',
     symbol: 'ETH',
     nativeToken: 'ETH',
     tokenSymbol: 'USDC',
     usdcAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     usdcDecimals: 6,
-    vaultAddress: '0x198079c389d2FCE83C7ea0d7795Df8b54a1Ebebe'
+    vaultAddress: '0xc0E153f5B0FCAfD673288439d57c276362dc8799'
   },
   hskTestnet: {
     id: 'hskTestnet',
@@ -360,6 +361,7 @@ export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia'
   let nativeBalance = 0;
   let usdcBalance = 0;
   let vaultState = null;
+  let tokenVaultState = null;
 
   // 1. Fetch Real Native Balance (ETH)
   try {
@@ -394,7 +396,8 @@ export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia'
     try {
       const vaultFormatted = ethers.getAddress(network.vaultAddress.toLowerCase());
       const vaultAbi = [
-        'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+        'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)',
+        'function getTokenVault(address payer, address token) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
       ];
       const vaultContract = new ethers.Contract(vaultFormatted, vaultAbi, provider);
       const res = await vaultContract.getVault(formattedAddress);
@@ -406,6 +409,20 @@ export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia'
         lastMerkleRoot: res[4],
         nonce: Number(res[5])
       };
+
+      if (network.usdcAddress && network.usdcAddress !== ethers.ZeroAddress) {
+        try {
+          const tres = await vaultContract.getTokenVault(formattedAddress, network.usdcAddress);
+          tokenVaultState = {
+            payer: tres[0],
+            lockedAmount: parseFloat(ethers.formatUnits(tres[1], network.usdcDecimals || 6)),
+            totalSettled: parseFloat(ethers.formatUnits(tres[2], network.usdcDecimals || 6)),
+            availableToSpend: parseFloat(ethers.formatUnits(tres[3], network.usdcDecimals || 6)),
+            lastMerkleRoot: tres[4],
+            nonce: Number(tres[5])
+          };
+        } catch (tErr) {}
+      }
     } catch (err) {
       // Expected if no deposits have been made yet
     }
@@ -421,6 +438,7 @@ export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia'
     asset: network.tokenSymbol || 'USDC',
     nativeSymbol: network.nativeToken || 'ETH',
     vaultState,
+    tokenVaultState,
     faucetUrl: network.faucetUrl,
     ethFaucetUrl: network.ethFaucetUrl,
     usdcAddress: network.usdcAddress,
@@ -458,10 +476,108 @@ export function importEvmAccount(keyOrAddress) {
 }
 
 /**
+ * Deposits native ETH / gas token into the PollarOfflineVault smart contract
+ */
+export async function depositToVault({
+  privateKey,
+  amountEth,
+  networkId = 'sepolia'
+}) {
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  const targetVault = network.vaultAddress;
+
+  if (!targetVault || targetVault === ethers.ZeroAddress) {
+    throw new Error('No hay contrato de bóveda configurado para esta red.');
+  }
+
+  const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+  const signer = new ethers.Wallet(privateKey, provider);
+
+  const vaultAbi = [
+    'function depositVault() external payable',
+    'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+  ];
+
+  const vaultContract = new ethers.Contract(targetVault, vaultAbi, signer);
+  const valueWei = ethers.parseEther(amountEth.toString());
+
+  console.log(`[EVM] Depositing ${amountEth} ETH into vault ${targetVault} from ${signer.address}...`);
+  const tx = await vaultContract.depositVault({ value: valueWei });
+  const receipt = await tx.wait(1);
+
+  return {
+    success: true,
+    hash: tx.hash,
+    blockNumber: receipt.blockNumber,
+    vaultAddress: targetVault,
+    explorerUrl: `${network.blockExplorer}/tx/${tx.hash}`
+  };
+}
+
+/**
+ * Deposits ERC-20 tokens (e.g. Circle USDC, USDT) into the PollarOfflineVault smart contract
+ */
+export async function depositTokenToVault({
+  privateKey,
+  tokenAddress,
+  amountTokens,
+  decimals = 6,
+  networkId = 'sepolia'
+}) {
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  const targetVault = network.vaultAddress;
+
+  if (!targetVault || targetVault === ethers.ZeroAddress) {
+    throw new Error('No hay contrato de bóveda configurado para esta red.');
+  }
+
+  const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+  const signer = new ethers.Wallet(privateKey, provider);
+
+  const erc20Abi = [
+    'function approve(address spender, uint256 amount) external returns (bool)',
+    'function allowance(address owner, address spender) external view returns (uint256)',
+    'function balanceOf(address account) external view returns (uint256)'
+  ];
+  const vaultAbi = [
+    'function depositTokenVault(address token, uint256 amount) external',
+    'function getTokenVault(address payer, address token) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+  ];
+
+  const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
+  const vaultContract = new ethers.Contract(targetVault, vaultAbi, signer);
+
+  const amountUnits = ethers.parseUnits(amountTokens.toString(), decimals);
+
+  // 1. Approve vault if allowance is insufficient
+  const currentAllowance = await tokenContract.allowance(signer.address, targetVault);
+  if (currentAllowance < amountUnits) {
+    console.log(`[EVM] Approving vault to spend ${amountTokens} tokens...`);
+    const approveTx = await tokenContract.approve(targetVault, amountUnits);
+    await approveTx.wait(1);
+  }
+
+  // 2. Deposit into vault
+  console.log(`[EVM] Depositing ${amountTokens} tokens into vault from ${signer.address}...`);
+  const depositTx = await vaultContract.depositTokenVault(tokenAddress, amountUnits);
+  const receipt = await depositTx.wait(1);
+
+  return {
+    success: true,
+    hash: depositTx.hash,
+    blockNumber: receipt.blockNumber,
+    vaultAddress: targetVault,
+    explorerUrl: `${network.blockExplorer}/tx/${depositTx.hash}`
+  };
+}
+
+/**
  * Submits a batch settlement transaction to an EVM network (Sepolia, HSK, etc.)
  * Calls the PollarVault contract or broadcasts an on-chain settlement event with the Merkle root.
  */
 export async function submitRealEvmBatchTransaction({
+  submitterPrivateKey,
+  submitterAddress,
   payerPrivateKey,
   payerAddress,
   payeeAddress,
@@ -470,101 +586,154 @@ export async function submitRealEvmBatchTransaction({
   networkId = 'sepolia'
 }) {
   const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
-  console.log(`[EVM] Submitting batch settlement to ${network.name}...`);
+  console.log(`[EVM] Preparing batch settlement for ${network.name}...`);
+
+  const keyToUse = submitterPrivateKey || payerPrivateKey;
+  if (!keyToUse) {
+    throw new Error('Se requiere la clave privada del remitente para firmar la transacción on-chain.');
+  }
 
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-  const signer = new ethers.Wallet(payerPrivateKey, provider);
+  const signer = new ethers.Wallet(keyToUse, provider);
+  const broadcasterAddress = signer.address;
 
-  // Ensure root hash has 0x prefix
-  const formattedRoot = merkleRootHash.startsWith('0x') ? merkleRootHash : `0x${merkleRootHash}`;
+  // Ensure root hash has 0x prefix and is 32 bytes hex
+  const formattedRoot = merkleRootHash && merkleRootHash.startsWith('0x')
+    ? merkleRootHash
+    : `0x${merkleRootHash || '0000000000000000000000000000000000000000000000000000000000000000'}`;
+
+  // 1. Pre-flight Gas Verification
+  const gasBalance = await provider.getBalance(broadcasterAddress);
+  const gasBalanceEth = parseFloat(ethers.formatEther(gasBalance));
+  console.log(`[EVM] Submitter ${broadcasterAddress} gas balance: ${gasBalanceEth.toFixed(6)} ETH`);
+
+  const minGasRequired = ethers.parseEther('0.00003');
+  if (gasBalance < minGasRequired) {
+    const err = new Error(
+      `Gas insuficiente en la cuenta transmisora (${broadcasterAddress.slice(0, 6)}...${broadcasterAddress.slice(-4)}). Saldo: ${gasBalanceEth.toFixed(6)} Sepolia ETH. Para registrar este lote en la red Ethereum Sepolia requieres una fracción de Sepolia ETH (ej: 0.001 ETH) para cubrir el gas de la red.`
+    );
+    err.code = 'INSUFFICIENT_GAS';
+    err.submitterAddress = broadcasterAddress;
+    err.gasBalance = gasBalanceEth;
+    err.faucetUrl = network.ethFaucetUrl || 'https://sepoliafaucet.com/';
+    err.googleFaucetUrl = network.googleFaucetUrl || 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia';
+    throw err;
+  }
 
   const vaultAbi = [
-    'function settleBatch(address payer, address payee, uint256 settleAmount, bytes32 merkleRoot, uint64 batchNonce) external',
+    'function settleBatch(address payer, address payable payee, uint256 settleAmount, bytes32 merkleRoot, uint64 batchNonce) external',
+    'function settleTokenBatch(address payer, address payee, address token, uint256 settleAmount, bytes32 merkleRoot, uint64 batchNonce) external',
     'function depositVault() external payable',
-    'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+    'function depositTokenVault(address token, uint256 amount) external',
+    'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)',
+    'function getTokenVault(address payer, address token) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
   ];
 
-  try {
-    let tx;
-    const targetVault = network.vaultAddress;
+  let tx;
+  const targetVault = network.vaultAddress;
+  let usedVaultContract = false;
 
-    // Check if deployed contract can be called
-    if (targetVault && targetVault !== ethers.ZeroAddress) {
-      const vaultContract = new ethers.Contract(targetVault, vaultAbi, signer);
-      const settleAmountWei = ethers.parseEther(Math.min(0.0001, parseFloat(amount) || 0.0001).toFixed(6));
-      const nonceVal = BigInt(Math.floor(Date.now() / 1000));
+  // 2. Determine Settlement Mechanism: Vault Contract Escrow vs Direct On-Chain Anchor
+  if (targetVault && targetVault !== ethers.ZeroAddress) {
+    const vaultContract = new ethers.Contract(targetVault, vaultAbi, signer);
+    const nonceVal = BigInt(Math.floor(Date.now() / 1000));
 
+    // A. Check ERC-20 Token Vault first (USDC / USDT)
+    if (network.usdcAddress && network.usdcAddress !== ethers.ZeroAddress) {
       try {
-        console.log(`[EVM] Calling PollarOfflineVault.settleBatch on ${targetVault}...`);
-        tx = await vaultContract.settleBatch(
-          payerAddress,
-          payeeAddress,
-          settleAmountWei,
-          formattedRoot,
-          nonceVal
-        );
-      } catch (callErr) {
-        console.warn('[EVM] settleBatch call notice, falling back to data anchoring:', callErr.message);
-        // Fallback to direct anchor tx to the vault
-        const payloadData = ethers.hexlify(ethers.toUtf8Bytes(JSON.stringify({
-          protocol: 'POLLAR_OFFLINE_SETTLEMENT_V1',
-          vault: targetVault,
-          payer: payerAddress,
-          payee: payeeAddress,
-          merkleRoot: formattedRoot,
-          amount: amount.toString(),
-          timestamp: Date.now()
-        })));
+        const tv = await vaultContract.getTokenVault(payerAddress, network.usdcAddress);
+        const tokenLocked = BigInt(tv[1] || 0n);
+        const tokenSettled = BigInt(tv[2] || 0n);
+        const tokenAvail = tokenLocked > tokenSettled ? tokenLocked - tokenSettled : 0n;
+        const requestedUnits = ethers.parseUnits(Math.min(1000, parseFloat(amount) || 1.0).toFixed(2), network.usdcDecimals || 6);
+        const settleTokenUnits = tokenAvail >= requestedUnits ? requestedUnits : tokenAvail;
 
-        tx = await signer.sendTransaction({
-          to: targetVault,
-          value: 0n,
-          data: payloadData
-        });
+        console.log(`[EVM] Token Vault check for payer ${payerAddress}: locked=${ethers.formatUnits(tokenLocked, network.usdcDecimals || 6)}, available=${ethers.formatUnits(tokenAvail, network.usdcDecimals || 6)}, requested=${ethers.formatUnits(requestedUnits, network.usdcDecimals || 6)}`);
+
+        if (tv[0]?.toLowerCase() === payerAddress?.toLowerCase() && tokenAvail > 0n && settleTokenUnits > 0n) {
+          console.log(`[EVM] Calling settleTokenBatch on smart contract for ${ethers.formatUnits(settleTokenUnits, network.usdcDecimals || 6)} tokens...`);
+          tx = await vaultContract.settleTokenBatch(
+            payerAddress,
+            payeeAddress,
+            network.usdcAddress,
+            settleTokenUnits,
+            formattedRoot,
+            nonceVal
+          );
+          usedVaultContract = true;
+        }
+      } catch (tokenCheckErr) {
+        console.warn('[EVM] Token vault check error:', tokenCheckErr.message);
       }
-    } else {
-      const payloadData = ethers.hexlify(ethers.toUtf8Bytes(JSON.stringify({
-        protocol: 'POLLAR_OFFLINE_SETTLEMENT_V1',
-        payer: payerAddress,
-        payee: payeeAddress,
-        merkleRoot: formattedRoot,
-        amount: amount.toString(),
-        timestamp: Date.now()
-      })));
-
-      tx = await signer.sendTransaction({
-        to: payeeAddress,
-        value: 0n,
-        data: payloadData
-      });
     }
 
-    console.log(`[EVM] Settlement transaction submitted to ${network.name}:`, tx.hash);
-    const receipt = await tx.wait(1);
+    // B. Check Native ETH Vault if not settled with tokens
+    if (!tx) {
+      try {
+        const v = await vaultContract.getVault(payerAddress);
+        const lockedAmount = BigInt(v[1] || 0n);
+        const totalSettled = BigInt(v[2] || 0n);
+        const available = lockedAmount > totalSettled ? lockedAmount - totalSettled : 0n;
+        const settleAmountWei = available > 0n ? (available > ethers.parseEther('0.001') ? ethers.parseEther('0.001') : available) : 0n;
 
-    return {
-      success: true,
-      hash: tx.hash,
-      blockNumber: receipt.blockNumber,
-      merkleRoot: formattedRoot,
-      vaultAddress: targetVault,
-      network: network.name,
-      explorerUrl: `${network.blockExplorer}/tx/${tx.hash}`
-    };
-  } catch (err) {
-    console.warn('[EVM] Live broadcast notice (faucet / gas required):', err.message);
-
-    const mockTxHash = ethers.keccak256(ethers.toUtf8Bytes(`${payerAddress}:${payeeAddress}:${formattedRoot}:${Date.now()}`));
-
-    return {
-      success: true,
-      hash: mockTxHash,
-      blockNumber: Math.floor(6500000 + Math.random() * 50000),
-      merkleRoot: formattedRoot,
-      vaultAddress: network.vaultAddress,
-      network: network.name,
-      explorerUrl: `${network.blockExplorer}/tx/${mockTxHash}`,
-      simulatedNotice: 'Offline cryptographically-anchored settlement record generated'
-    };
+        if (v[0]?.toLowerCase() === payerAddress?.toLowerCase() && available > 0n) {
+          console.log(`[EVM] Vault initialized for payer with ${ethers.formatEther(available)} ETH available. Calling settleBatch...`);
+          tx = await vaultContract.settleBatch(
+            payerAddress,
+            payeeAddress,
+            settleAmountWei,
+            formattedRoot,
+            nonceVal
+          );
+          usedVaultContract = true;
+        } else {
+          console.log(`[EVM] Vault not pre-funded for payer (${ethers.formatEther(available)} ETH available). Proceeding with on-chain cryptographic settlement anchor.`);
+        }
+      } catch (vaultCheckErr) {
+        console.warn('[EVM] Vault verification notice:', vaultCheckErr.message);
+      }
+    }
   }
+
+  // 3. Direct On-Chain Settlement Anchor (if vault escrow wasn't funded)
+  // Sends to payeeAddress (an EOA, which permanently anchors the Merkle root in tx input data without reverting)
+  if (!tx) {
+    const anchorRecipient = (payeeAddress && payeeAddress !== ethers.ZeroAddress) ? payeeAddress : broadcasterAddress;
+    const payloadData = ethers.hexlify(ethers.toUtf8Bytes(JSON.stringify({
+      protocol: 'POLLAR_OFFLINE_SETTLEMENT_V1',
+      vault: targetVault || null,
+      payer: payerAddress,
+      payee: payeeAddress,
+      merkleRoot: formattedRoot,
+      amount: amount.toString(),
+      timestamp: Date.now()
+    })));
+
+    console.log(`[EVM] Broadcasting on-chain settlement anchor transaction to ${anchorRecipient}...`);
+    tx = await signer.sendTransaction({
+      to: anchorRecipient,
+      value: 0n,
+      data: payloadData
+    });
+  }
+
+  console.log(`[EVM] Settlement transaction submitted to ${network.name}: ${tx.hash}`);
+  const receipt = await tx.wait(1);
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`La transacción on-chain (${tx.hash}) fue revertida o no confirmada por la red.`);
+  }
+
+  console.log(`[EVM] Transaction confirmed in block #${receipt.blockNumber}!`);
+
+  return {
+    success: true,
+    hash: tx.hash,
+    blockNumber: receipt.blockNumber,
+    merkleRoot: formattedRoot,
+    vaultAddress: usedVaultContract ? targetVault : null,
+    anchorRecipient: payeeAddress,
+    network: network.name,
+    explorerUrl: `${network.blockExplorer}/tx/${tx.hash}`
+  };
 }

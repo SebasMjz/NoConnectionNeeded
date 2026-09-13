@@ -37,6 +37,8 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     returnFundsToMain,
     refreshOnlineBalance,
     requestFriendbotFunding,
+    fundEvmVault,
+    fundEvmTokenVault,
     isRefreshingBalance,
     transactions,
     isEvm,
@@ -53,6 +55,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [copiedContract, setCopiedContract] = useState(false);
   const [isFunding, setIsFunding] = useState(false);
+  const [isDepositingVault, setIsDepositingVault] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [receiveQrUrl, setReceiveQrUrl] = useState('');
 
@@ -68,13 +71,47 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     .filter(t => t.status !== 'SYNCED_ONCHAIN')
     .reduce((acc, t) => acc + t.payload.amount, 0);
 
-  const handleTransfer = (e) => {
+  const [depositOnChain, setDepositOnChain] = useState(true);
+  const [lastDepositReceipt, setLastDepositReceipt] = useState(null);
+
+  const handleTransfer = async (e) => {
     e.preventDefault();
     setFeedback({ type: '', message: '' });
+    setLastDepositReceipt(null);
+
+    const num = parseFloat(transferAmount);
+    if (isNaN(num) || num <= 0) {
+      setFeedback({ type: 'error', message: 'Ingresa un monto válido mayor a 0' });
+      return;
+    }
+
     try {
       if (activeAction === 'allocate') {
-        allocateOfflineFunds(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} bloqueados en Bóveda Offline` });
+        if (isEvm && depositOnChain) {
+          setIsDepositingVault(true);
+          try {
+            let res;
+            if (deviceA.asset === 'USDC') {
+              res = await fundEvmTokenVault(transferAmount);
+            } else {
+              res = await fundEvmVault(transferAmount);
+            }
+            allocateOfflineFunds(transferAmount);
+            setLastDepositReceipt(res);
+            setFeedback({
+              type: 'success',
+              message: `¡${transferAmount} ${deviceA.asset} depositados en Smart Contract Vault y bloqueados para Offline!`,
+              explorerUrl: res?.explorerUrl || (res?.hash ? `${EVM_NETWORKS[activeEvmChain]?.blockExplorer}/tx/${res.hash}` : null)
+            });
+          } catch (depositErr) {
+            throw new Error(`Error en el depósito on-chain: ${depositErr.message || depositErr}`);
+          } finally {
+            setIsDepositingVault(false);
+          }
+        } else {
+          allocateOfflineFunds(transferAmount);
+          setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} bloqueados en Bóveda Offline (Local)` });
+        }
       } else {
         returnFundsToMain(transferAmount);
         setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} liberados a Billetera Principal` });
@@ -82,6 +119,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
       setTransferAmount('');
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
+      setIsDepositingVault(false);
     }
   };
 
@@ -137,6 +175,44 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     navigator.clipboard.writeText(usdcAddr);
     setCopiedContract(true);
     setTimeout(() => setCopiedContract(false), 2000);
+  };
+
+  const handleDepositToSmartContract = async () => {
+    setIsDepositingVault(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      const res = await fundEvmVault('0.001');
+      setFeedback({
+        type: 'success',
+        message: `¡0.001 Sepolia ETH depositados en el Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Error al depositar en el Smart Contract Vault'
+      });
+    } finally {
+      setIsDepositingVault(false);
+    }
+  };
+
+  const handleDepositTokenToSmartContract = async (amt = '1') => {
+    setIsDepositingVault(true);
+    setFeedback({ type: '', message: '' });
+    try {
+      const res = await fundEvmTokenVault(amt);
+      setFeedback({
+        type: 'success',
+        message: `¡${amt} USDC depositados en Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Error al depositar USDC en el Smart Contract Vault'
+      });
+    } finally {
+      setIsDepositingVault(false);
+    }
   };
 
   return (
@@ -370,18 +446,164 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               ))}
             </div>
 
-            <button type="submit" className="pollar-btn-primary">
-              {activeAction === 'allocate' ? 'Bloquear Fondos para Offline' : 'Liberar a Billetera'}
+            {isEvm && activeAction === 'allocate' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: 'var(--text-main)', cursor: 'pointer', background: '#F1F5F9', padding: '10px 12px', borderRadius: 12, border: '1px solid #E2E8F0' }}>
+                <input
+                  type="checkbox"
+                  checked={depositOnChain}
+                  onChange={(e) => setDepositOnChain(e.target.checked)}
+                  style={{ accentColor: 'var(--pollar-blue)', width: 16, height: 16 }}
+                />
+                <span style={{ flex: 1 }}>
+                  🔒 Depositar directamente en <strong>Smart Contract Vault (Sepolia)</strong>
+                </span>
+              </label>
+            )}
+
+            <button type="submit" disabled={isDepositingVault} className="pollar-btn-primary">
+              {isDepositingVault ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span>Confirmando depósito en Sepolia...</span>
+                </span>
+              ) : (
+                activeAction === 'allocate'
+                  ? (isEvm && depositOnChain ? `Bloquear y Depositar ${transferAmount ? `${transferAmount} ${deviceA.asset}` : ''} en Smart Contract` : 'Bloquear Fondos para Offline')
+                  : 'Liberar a Billetera'
+              )}
             </button>
           </form>
+
+          {/* Smart Contract On-Chain Vault Escrow Section */}
+          {isEvm && (
+            <div style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 14,
+              background: '#F8FAFC',
+              border: '1.5px solid #E2E8F0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)' }}>
+                  Smart Contract Vault ({EVM_NETWORKS[activeEvmChain]?.name || 'Sepolia'})
+                </span>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 10,
+                  background: ((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? '#D1FAE5' : '#FEF3C7',
+                  color: ((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? '#065F46' : '#92400E'
+                }}>
+                  {((deviceA.tokenVaultState?.availableToSpend > 0) || (deviceA.vaultState?.availableToSpend > 0)) ? 'Bóveda Fondeada en Contrato' : 'Sin Fondos en Contrato'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div>Contrato: {EVM_NETWORKS[activeEvmChain]?.vaultAddress?.slice(0, 8)}...{EVM_NETWORKS[activeEvmChain]?.vaultAddress?.slice(-6)}</div>
+                <div style={{ color: (deviceA.tokenVaultState?.availableToSpend > 0) ? '#065F46' : 'inherit', fontWeight: (deviceA.tokenVaultState?.availableToSpend > 0) ? 800 : 500 }}>
+                  USDC en Contrato: <strong>{(deviceA.tokenVaultState?.availableToSpend || 0).toFixed(2)} USDC</strong> (Total Bloqueado: {(deviceA.tokenVaultState?.lockedAmount || 0).toFixed(2)})
+                </div>
+                <div>
+                  ETH en Contrato: <strong>{(deviceA.vaultState?.availableToSpend || 0).toFixed(4)} ETH</strong>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                ℹ️ <strong>Bóveda Local:</strong> Asigna límite de gasto offline en tu teléfono.<br />
+                🔒 <strong>Smart Contract:</strong> Custodia fondos en Sepolia para liquidación automática on-chain.
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                <button
+                  type="button"
+                  disabled={isDepositingVault || (deviceA.nativeBalance || 0) < 0.001}
+                  onClick={handleDepositToSmartContract}
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: 12,
+                    background: (deviceA.nativeBalance || 0) >= 0.001 ? 'var(--pollar-blue)' : '#94A3B8',
+                    color: '#FFFFFF',
+                    fontWeight: 800,
+                    fontSize: 11,
+                    border: 'none',
+                    cursor: (deviceA.nativeBalance || 0) >= 0.001 ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                  <span>
+                    {(deviceA.nativeBalance || 0) >= 0.001
+                      ? 'Depositar 0.001 ETH en Smart Contract'
+                      : 'Recarga Sepolia ETH para depositar'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isDepositingVault || (deviceA.mainBalance || 0) < 1 || (deviceA.nativeBalance || 0) < 0.0003}
+                  onClick={() => handleDepositTokenToSmartContract('1')}
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: 12,
+                    background: ((deviceA.mainBalance || 0) >= 1 && (deviceA.nativeBalance || 0) >= 0.0003) ? '#10B981' : '#94A3B8',
+                    color: '#FFFFFF',
+                    fontWeight: 800,
+                    fontSize: 11,
+                    border: 'none',
+                    cursor: ((deviceA.mainBalance || 0) >= 1 && (deviceA.nativeBalance || 0) >= 0.0003) ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                  <span>
+                    {(deviceA.mainBalance || 0) >= 1
+                      ? ((deviceA.nativeBalance || 0) >= 0.0003 ? 'Depositar 1.00 USDC en Smart Contract' : 'Necesitas gas Sepolia ETH para depositar USDC')
+                      : 'Sin saldo USDC en Pagador A'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Feedback Banner */}
       {feedback.message && (
-        <div className={`pollar-feedback ${feedback.type === 'error' ? 'error' : 'success'}`}>
-          {feedback.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span style={{ fontSize: 13, fontWeight: 700 }}>{feedback.message}</span>
+        <div className={`pollar-feedback ${feedback.type === 'error' ? 'error' : 'success'}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {feedback.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{feedback.message}</span>
+          </div>
+          {feedback.explorerUrl && (
+            <a
+              href={feedback.explorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: 'var(--pollar-blue)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                textDecoration: 'underline',
+                marginLeft: 26
+              }}
+            >
+              <span>Ver Comprobante de Depósito en Sepolia Etherscan</span>
+              <ExternalLink size={12} />
+            </a>
+          )}
         </div>
       )}
 
@@ -661,12 +883,21 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   <ExternalLink size={14} />
                 </a>
                 <a 
+                  href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia" 
+                  target="_blank" 
+                  rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(16, 185, 129, 0.08)', color: '#059669', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
+                >
+                  <span>2. Faucet Google Cloud Web3 (Sepolia ETH Gas - Rápido)</span>
+                  <ExternalLink size={14} />
+                </a>
+                <a 
                   href={EVM_NETWORKS.sepolia.ethFaucetUrl} 
                   target="_blank" 
                   rel="noreferrer"
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(245, 158, 11, 0.08)', color: '#D97706', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
                 >
-                  <span>2. Faucet Sepolia ETH (Gas para transacciones)</span>
+                  <span>3. Faucet Sepolia ETH Alternativo (PoW / Web)</span>
                   <ExternalLink size={14} />
                 </a>
               </div>

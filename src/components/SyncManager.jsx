@@ -12,7 +12,9 @@ import {
   GitBranch,
   Layers,
   Copy,
-  Check
+  Check,
+  Fuel,
+  ExternalLink
 } from 'lucide-react';
 import { EVM_NETWORKS } from '../services/evmCrypto';
 
@@ -25,30 +27,65 @@ export default function SyncManager() {
     isSyncing, 
     lastSyncResult,
     isEvm,
-    activeEvmChain
+    activeEvmChain,
+    activeDevice,
+    deviceA,
+    deviceB,
+    refreshOnlineBalance
   } = useWallet();
 
-  const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [feedback, setFeedback] = useState({ type: '', message: '', isGasError: false });
   const [showMerkleDetails, setShowMerkleDetails] = useState(false);
   const [copiedRoot, setCopiedRoot] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [isRefreshingGas, setIsRefreshingGas] = useState(false);
 
   const currentEvmNetwork = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
   const targetNetworkName = isEvm ? currentEvmNetwork.name : 'Stellar Testnet';
+
+  const submitterAccount = activeDevice === 'device_b' ? deviceB : deviceA;
+  const submitterRole = activeDevice === 'device_b' ? 'Dispositivo B (Comercio)' : 'Dispositivo A (Pagador)';
+  const submitterGas = isEvm ? (submitterAccount.nativeBalance || 0) : 0;
 
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
   const syncedTxs = transactions.filter(t => t.status === 'SYNCED_ONCHAIN');
   const totalPending = pendingTxs.reduce((acc, t) => acc + t.payload.amount, 0);
 
+  const copySubmitterAddress = () => {
+    if (submitterAccount?.publicKey) {
+      navigator.clipboard.writeText(submitterAccount.publicKey);
+      setCopiedAddress(true);
+      setTimeout(() => setCopiedAddress(false), 2000);
+    }
+  };
+
+  const handleRefreshGas = async () => {
+    setIsRefreshingGas(true);
+    try {
+      await refreshOnlineBalance(submitterAccount?.publicKey);
+    } catch (e) {
+      console.warn('Refresh gas error:', e);
+    } finally {
+      setIsRefreshingGas(false);
+    }
+  };
+
   const handleSync = async () => {
-    setFeedback({ type: '', message: '' });
+    setFeedback({ type: '', message: '', isGasError: false });
     try {
       const res = await syncToNetwork('USER_MANUAL_CLICK');
       setFeedback({ 
         type: 'success', 
-        message: `Lote sincronizado con éxito en ${targetNetworkName} (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})` 
+        message: `Lote sincronizado con éxito en ${targetNetworkName} (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})`,
+        isGasError: false
       });
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || `Error al sincronizar lote en ${targetNetworkName}` });
+      const isGasErr = err.code === 'INSUFFICIENT_GAS' || (err.message && (err.message.includes('Gas') || err.message.includes('gas') || err.message.includes('insufficient funds')));
+      setFeedback({ 
+        type: 'error', 
+        message: err.message || `Error al sincronizar lote en ${targetNetworkName}`,
+        isGasError: isGasErr
+      });
     }
   };
 
@@ -131,6 +168,138 @@ export default function SyncManager() {
           </span>
         </div>
 
+        {/* EVM Submitter & Gas Status Panel */}
+        {isEvm && (
+          <div style={{
+            padding: 14,
+            borderRadius: 16,
+            background: submitterGas > 0.00005 ? 'rgba(16, 185, 129, 0.06)' : 'rgba(245, 158, 11, 0.08)',
+            border: `1.5px solid ${submitterGas > 0.00005 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.4)'}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Fuel size={16} color={submitterGas > 0.00005 ? '#10B981' : '#D97706'} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)' }}>
+                  Cuenta Transmisora: <strong style={{ color: 'var(--pollar-blue)' }}>{submitterRole}</strong>
+                </span>
+              </div>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 800,
+                padding: '3px 8px',
+                borderRadius: 10,
+                background: submitterGas > 0.00005 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.2)',
+                color: submitterGas > 0.00005 ? '#065F46' : '#92400E'
+              }}>
+                {submitterGas > 0.00005 ? 'Gas Listo' : 'Requiere Gas Sepolia ETH'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {submitterAccount?.publicKey ? `${submitterAccount.publicKey.slice(0, 8)}...${submitterAccount.publicKey.slice(-6)}` : ''}
+              </span>
+              <span style={{ fontWeight: 800, color: submitterGas > 0.00005 ? '#10B981' : '#D97706' }}>
+                {submitterGas.toFixed(5)} Sepolia ETH
+              </span>
+            </div>
+
+            {submitterGas <= 0.00005 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <p style={{ fontSize: 11, color: '#B45309', margin: 0, lineHeight: 1.4 }}>
+                  Para registrar y asentar transacciones on-chain en Sepolia se requiere una pequeña cantidad de Sepolia ETH para el gas de los mineros.
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={copySubmitterAddress}
+                    type="button"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      background: '#FFFFFF',
+                      border: '1px solid #D97706',
+                      color: '#B45309',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {copiedAddress ? <Check size={12} /> : <Copy size={12} />}
+                    {copiedAddress ? '¡Copiado!' : 'Copiar Dirección'}
+                  </button>
+                  <a
+                    href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      background: 'var(--pollar-blue)',
+                      color: '#FFFFFF',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textDecoration: 'none'
+                    }}
+                  >
+                    <span>Faucet Google Web3</span>
+                    <ExternalLink size={12} />
+                  </a>
+                  <a
+                    href="https://sepoliafaucet.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      background: 'rgba(0, 98, 255, 0.1)',
+                      color: 'var(--pollar-blue)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textDecoration: 'none'
+                    }}
+                  >
+                    <span>SepoliaFaucet</span>
+                    <ExternalLink size={12} />
+                  </a>
+                  <button
+                    onClick={handleRefreshGas}
+                    type="button"
+                    disabled={isRefreshingGas}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      background: '#F1F5F9',
+                      border: '1px solid #CBD5E1',
+                      color: 'var(--text-main)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <RefreshCw size={12} className={isRefreshingGas ? 'animate-spin' : ''} />
+                    <span>Verificar Saldo</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           onClick={handleSync}
           disabled={isSyncing || pendingTxs.length === 0 || !isOnline}
@@ -175,14 +344,81 @@ export default function SyncManager() {
             fontSize: 12,
             fontWeight: 600,
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: 8,
             background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
             color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)',
             border: feedback.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(244, 63, 94, 0.2)'
           }}>
-            {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-            <span>{feedback.message}</span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              {feedback.type === 'success' ? <CheckCircle2 size={16} shrink={0} /> : <AlertCircle size={16} shrink={0} />}
+              <span>{feedback.message}</span>
+            </div>
+
+            {feedback.isGasError && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                <button
+                  onClick={copySubmitterAddress}
+                  type="button"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    background: '#FFFFFF',
+                    border: '1px solid var(--color-rose)',
+                    color: 'var(--color-rose)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {copiedAddress ? <Check size={12} /> : <Copy size={12} />}
+                  {copiedAddress ? '¡Copiado!' : 'Copiar Dirección'}
+                </button>
+                <a
+                  href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    background: 'var(--pollar-blue)',
+                    color: '#FFFFFF',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <span>Faucet Google Web3</span>
+                  <ExternalLink size={12} />
+                </a>
+                <a
+                  href="https://sepoliafaucet.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    background: 'rgba(0, 98, 255, 0.1)',
+                    color: 'var(--pollar-blue)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <span>SepoliaFaucet</span>
+                  <ExternalLink size={12} />
+                </a>
+              </div>
+            )}
           </div>
         )}
 
@@ -214,6 +450,22 @@ export default function SyncManager() {
               )}
             </div>
             <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {isEvm && (
+                <div style={{ 
+                  fontSize: 11, 
+                  fontWeight: 700, 
+                  color: lastSyncResult.usedVaultContract ? '#065F46' : '#92400E',
+                  background: lastSyncResult.usedVaultContract ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.12)',
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  marginBottom: 4,
+                  lineHeight: 1.4
+                }}>
+                  {lastSyncResult.usedVaultContract 
+                    ? '🏦 Liquidado mediante Smart Contract Vault · Fondos transferidos on-chain a la wallet del comercio' 
+                    : '⚓ Anclaje de Datos On-Chain: Registrado en Sepolia con prueba Merkle. (Para que el contrato transfiera dinero real on-chain, el Pagador debe fondear su Smart Contract Vault previamente).'}
+                </div>
+              )}
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <strong>Tx Hash:</strong> {lastSyncResult.txHash || lastSyncResult.stellarTxHash}
               </div>
