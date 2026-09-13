@@ -50,9 +50,16 @@ async function deploy() {
   console.log(`RPC: ${network.rpcUrl}`);
   console.log(`Chain ID: ${network.chainId}`);
   console.log('='.repeat(60));
-
+  // Setup provider and wallet with longer timeout
   const ethers = await import('ethers');
-  const provider = new ethers.JsonRpcProvider(network.rpcUrl, network.chainId);
+  const provider = new ethers.JsonRpcProvider({
+    url: network.rpcUrl,
+    timeout: 60000, // 60s timeout for slow networks
+  }, network.chainId);
+  
+  // Wait for provider to be ready
+  await provider.getNetwork();
+  
   const wallet = new ethers.Wallet(privateKey, provider);
 
   console.log(`Deployer: ${wallet.address}`);
