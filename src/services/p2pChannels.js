@@ -59,7 +59,7 @@ export async function startNfcReceiver(onPayloadReceived, onStatusChange = () =>
         console.warn('[NFC] Error decodificando payload NDEF:', err.message);
         onStatusChange({
           status: 'error',
-          message: 'Error al leer datos NFC. Verifica que sea un pago Pollar válido.'
+          message: 'Error al leer datos NFC. Verifica que sea un pago Avalanche válido.'
         });
       }
     };

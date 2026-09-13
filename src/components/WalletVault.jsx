@@ -168,7 +168,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         await refreshOnlineBalance(currentAccount.publicKey);
         setFeedback({ 
           type: 'success', 
-          message: 'Saldos actualizados on-chain desde Ethereum Sepolia.' 
+          message: 'Saldos actualizados on-chain desde Avalanche Fuji.' 
         });
       } else {
         await requestFriendbotFunding(currentAccount.publicKey);
@@ -191,7 +191,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   };
 
   const copyUsdcContract = () => {
-    const usdcAddr = EVM_NETWORKS.sepolia.usdcAddress;
+    const usdcAddr = EVM_NETWORKS.avalancheFuji.usdcAddress;
     navigator.clipboard.writeText(usdcAddr);
     setCopiedContract(true);
     setTimeout(() => setCopiedContract(false), 2000);
@@ -204,7 +204,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
       const res = await fundEvmVault('0.001');
       setFeedback({
         type: 'success',
-        message: `¡0.001 Sepolia ETH depositados en el Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
+        message: `¡0.001 AVAX depositados en el Smart Contract Vault! Tx: ${res.hash.slice(0, 12)}...`
       });
       await refreshOnlineBalance(currentAccount.publicKey);
     } catch (err) {
@@ -247,7 +247,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         {/* Card Top: Tag + Refresh */}
         <div className="pollar-card-top">
           <span className="pollar-card-tag">
-            Mi Billetera Pollar
+            Billetera Avalanche
           </span>
 
           <button
@@ -302,7 +302,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 gap: 4
               }}>
                 <Zap size={11} />
-                Gas: {(currentAccount.nativeBalance || 0).toFixed(4)} ETH (Sepolia)
+                Gas: {(currentAccount.nativeBalance || 0).toFixed(4)} AVAX (Fuji)
               </span>
             </div>
           )}
@@ -495,7 +495,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   style={{ accentColor: 'var(--pollar-blue)', width: 16, height: 16 }}
                 />
                 <span style={{ flex: 1 }}>
-                  🔒 Depositar directamente en <strong>Smart Contract Vault (Sepolia)</strong>
+                  🔒 Depositar directamente en <strong>Smart Contract Vault (Avalanche Fuji)</strong>
                 </span>
               </label>
             )}
@@ -504,7 +504,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               {isDepositingVault ? (
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   <RefreshCw size={16} className="animate-spin" />
-                  <span>Confirmando depósito en Sepolia...</span>
+                  <span>Confirmando depósito en Avalanche Fuji...</span>
                 </span>
               ) : (
                 activeAction === 'allocate'
@@ -528,7 +528,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-main)' }}>
-                  Smart Contract Vault ({EVM_NETWORKS[activeEvmChain]?.name || 'Sepolia'})
+                  Smart Contract Vault ({EVM_NETWORKS[activeEvmChain]?.name || 'Avalanche Fuji'})
                 </span>
                 <span style={{
                   fontSize: 10,
@@ -548,13 +548,13 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   USDC en Contrato: <strong>{(currentAccount.tokenVaultState?.availableToSpend || 0).toFixed(2)} USDC</strong> (Total Bloqueado: {(currentAccount.tokenVaultState?.lockedAmount || 0).toFixed(2)})
                 </div>
                 <div>
-                  ETH en Contrato: <strong>{(currentAccount.vaultState?.availableToSpend || 0).toFixed(4)} ETH</strong>
+                  AVAX en Contrato: <strong>{(currentAccount.vaultState?.availableToSpend || 0).toFixed(4)} AVAX</strong>
                 </div>
               </div>
 
               <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                 ℹ️ <strong>Bóveda Local:</strong> Asigna límite de gasto offline en tu teléfono.<br />
-                🔒 <strong>Smart Contract:</strong> Custodia fondos en Sepolia para liquidación automática on-chain.
+                🔒 <strong>Smart Contract:</strong> Custodia fondos en Avalanche Fuji para liquidación automática on-chain.
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
@@ -580,8 +580,8 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
                   <span>
                     {(currentAccount.nativeBalance || 0) >= 0.001
-                      ? 'Depositar 0.001 ETH en Smart Contract'
-                      : 'Recarga Sepolia ETH para depositar'}
+                      ? 'Depositar 0.001 AVAX en Smart Contract'
+                      : 'Recarga AVAX (Fuji) para depositar'}
                   </span>
                 </button>
 
@@ -651,7 +651,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 marginLeft: 26
               }}
             >
-              <span>Ver Comprobante de Depósito en Sepolia Etherscan</span>
+              <span>Ver Comprobante de Depósito en Snowtrace Fuji</span>
               <ExternalLink size={12} />
             </a>
           )}
@@ -680,7 +680,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
             <div>
               <span style={{ fontSize: 13, fontWeight: 800, color: '#92400E', display: 'block' }}>{pendingCount} pagos offline pendientes</span>
-              <span style={{ fontSize: 11, color: '#B45309' }}>{isEvm ? 'Toca para sincronizar en Sepolia' : 'Toca para sincronizar en Stellar'}</span>
+              <span style={{ fontSize: 11, color: '#B45309' }}>{isEvm ? 'Toca para sincronizar en Avalanche Fuji' : 'Toca para sincronizar en Stellar'}</span>
             </div>
           </div>
           <span style={{ fontSize: 14, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#92400E' }}>
@@ -720,7 +720,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   </div>
                   <div>
                     <span className="pollar-tx-title" style={{ display: 'block' }}>
-                      {tx.payload.memo || 'Pago Offline Pollar'}
+                      {tx.payload.memo || 'Pago Offline Avalanche'}
                     </span>
                     <span className="pollar-tx-meta">
                       Nonce #{tx.payload.nonce} · {tx.status === 'SYNCED_ONCHAIN' ? 'Confirmado On-Chain' : 'Guardado Offline'}
@@ -756,10 +756,10 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 </div>
                 <div>
                   <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>
-                    {isEvm ? 'Fondeo de Billetera (Sepolia)' : 'Recibir Fondos'}
+                    {isEvm ? 'Fondeo de Billetera (Avalanche Fuji)' : 'Recibir Fondos'}
                   </h3>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Mi Billetera Pollar · Recibir Fondos
+                    Mi Billetera Avalanche · Recibir Fondos
                   </p>
                 </div>
               </div>
@@ -780,7 +780,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 </span>
               </div>
               <div style={{ background: (currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.05)' : 'rgba(245, 158, 11, 0.05)', border: `1px solid ${(currentAccount.nativeBalance > 0) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`, padding: 12, borderRadius: 16 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block' }}>Gas (Sepolia ETH)</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block' }}>Gas (Avalanche AVAX)</span>
                 <span style={{ fontSize: 20, fontWeight: 900, color: (currentAccount.nativeBalance > 0) ? '#10B981' : '#D97706', fontFamily: 'var(--font-mono)' }}>
                   {(currentAccount.nativeBalance || 0).toFixed(4)}
                 </span>
@@ -810,7 +810,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 </div>
               )}
               <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>
-                Escanea desde MetaMask o tu billetera EVM
+                Escanea desde Core, MetaMask o tu billetera Avalanche
               </span>
 
               {/* Action Buttons: Download & WhatsApp */}
@@ -818,7 +818,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 280, marginTop: 4 }}>
                   <button
                     type="button"
-                    onClick={() => downloadQrImage(receiveQrUrl, `pollar_wallet_${currentAccount.publicKey.slice(0, 6)}.png`)}
+                    onClick={() => downloadQrImage(receiveQrUrl, `avalanche_wallet_${currentAccount.publicKey.slice(0, 6)}.png`)}
                     style={{
                       flex: 1,
                       padding: '9px 12px',
@@ -841,9 +841,9 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                     type="button"
                     onClick={() => shareQrToWhatsApp({
                       dataUrl: receiveQrUrl,
-                      title: 'Billetera Pollar (Recibir USDC / Gas)',
-                      text: `Dirección de mi Billetera Pollar:\n${currentAccount.publicKey}\n\nRed: Ethereum Sepolia Testnet (USDC / ETH)`,
-                      filename: `pollar_wallet_${currentAccount.publicKey.slice(0, 6)}.png`
+                      title: 'Billetera Avalanche (Recibir USDC / AVAX)',
+                      text: `Dirección de mi Billetera Avalanche:\n${currentAccount.publicKey}\n\nRed: Avalanche Fuji C-Chain Testnet (USDC / AVAX)`,
+                      filename: `avalanche_wallet_${currentAccount.publicKey.slice(0, 6)}.png`
                     })}
                     style={{
                       flex: 1,
@@ -895,25 +895,25 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               </div>
             </div>
 
-            {/* Sepolia USDC Contract Information */}
+            {/* Avalanche Fuji USDC Contract Information */}
             {isEvm && (
-              <div style={{ marginTop: 14, background: '#F1F5F9', borderRadius: 16, padding: 14, border: '1px solid #E2E8F0' }}>
+              <div style={{ marginTop: 14, background: '#FFF5F5', borderRadius: 16, padding: 14, border: '1px solid rgba(232, 65, 66, 0.2)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>
-                    Contrato Oficial USDC (Sepolia)
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#C52E2F' }}>
+                    Contrato Oficial USDC (Avalanche Fuji)
                   </span>
                   <button 
                     onClick={copyUsdcContract}
-                    style={{ background: 'transparent', border: 'none', color: copiedContract ? '#10B981' : 'var(--pollar-blue)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    style={{ background: 'transparent', border: 'none', color: copiedContract ? '#10B981' : '#E84142', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                   >
                     {copiedContract ? <Check size={12} /> : <Copy size={12} />} Copiar
                   </button>
                 </div>
                 <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#64748B', wordBreak: 'break-all', background: '#FFFFFF', padding: '6px 10px', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                  {EVM_NETWORKS.sepolia.usdcAddress}
+                  {EVM_NETWORKS.avalancheFuji.usdcAddress}
                 </p>
                 <p style={{ fontSize: 10, color: '#94A3B8', marginTop: 6 }}>
-                  Circle Official Testnet USDC · 6 Decimales · Símbolo: USDC
+                  Avalanche Fuji Testnet USDC · 6 Decimales · Símbolo: USDC
                 </p>
               </div>
             )}
@@ -925,30 +925,12 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   Enlaces a Faucets Gratuitos
                 </span>
                 <a 
-                  href={EVM_NETWORKS.sepolia.faucetUrl} 
+                  href="https://core.app/tools/testnet-faucet/?subnet=c&token=c" 
                   target="_blank" 
                   rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(0, 98, 255, 0.08)', color: 'var(--pollar-blue)', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(232, 65, 66, 0.08)', color: '#E84142', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
                 >
-                  <span>1. Faucet Oficial Circle (USDC Testnet)</span>
-                  <ExternalLink size={14} />
-                </a>
-                <a 
-                  href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(16, 185, 129, 0.08)', color: '#059669', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
-                >
-                  <span>2. Faucet Google Cloud Web3 (Sepolia ETH Gas - Rápido)</span>
-                  <ExternalLink size={14} />
-                </a>
-                <a 
-                  href={EVM_NETWORKS.sepolia.ethFaucetUrl} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: 'rgba(245, 158, 11, 0.08)', color: '#D97706', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}
-                >
-                  <span>3. Faucet Sepolia ETH Alternativo (PoW / Web)</span>
+                  <span>1. Faucet Oficial Avalanche Core (AVAX Fuji Gas)</span>
                   <ExternalLink size={14} />
                 </a>
               </div>
@@ -959,14 +941,14 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               <button
                 onClick={async () => {
                   await refreshOnlineBalance(currentAccount.publicKey);
-                  setFeedback({ type: 'success', message: '¡Saldo verificado y actualizado con la red Sepolia!' });
+                  setFeedback({ type: 'success', message: '¡Saldo verificado y actualizado con la red Avalanche Fuji!' });
                 }}
                 disabled={isRefreshingBalance}
                 className="pollar-btn-primary"
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               >
                 <RefreshCw size={18} className={isRefreshingBalance ? 'animate-spin' : ''} />
-                <span>{isRefreshingBalance ? 'Consultando Sepolia...' : 'Comprobar Depósito On-Chain'}</span>
+                <span>{isRefreshingBalance ? 'Consultando Avalanche Fuji...' : 'Comprobar Depósito On-Chain'}</span>
               </button>
             </div>
           </div>

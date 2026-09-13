@@ -1,6 +1,18 @@
 {
   "contractName": "PollarOfflineVault",
   "networks": {
+    "avalancheFuji": {
+      "name": "Avalanche Fuji Testnet",
+      "chainId": 43113,
+      "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+      "blockExplorer": "https://testnet.snowtrace.io",
+      "faucetUrl": "https://core.app/tools/testnet-faucet/?subnet=c&token=c",
+      "vaultAddress": "0xbBB74646C9F5786A39E22f57d3a3e23a47d85eAa",
+      "forwarderAddress": "0x54ffCA414fA2D5bEe30088a7EC99887ea19B454f",
+      "usdcAddress": "0x5425890298aed601595a70AB815c96711a31Bc65",
+      "currencySymbol": "AVAX",
+      "nativeToken": "AVAX"
+    },
     "sepolia": {
       "name": "Ethereum Sepolia Testnet",
       "chainId": 11155111,

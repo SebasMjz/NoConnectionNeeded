@@ -2,13 +2,32 @@ import { ethers } from 'ethers';
 import QRCode from 'qrcode';
 
 /**
- * EVM Cryptographic and Settlement Engine for Pollar
+ * EVM Cryptographic and Settlement Engine for Avalanche
  * Supports Secp256k1 key generation, EIP-191 / EIP-712 offline vouchers,
  * bilateral counter-signing, Keccak-256 Merkle trees, and on-chain settlement
- * for Ethereum Sepolia, Base, HashKey Chain HSK, and any EVM network.
+ * for Avalanche Fuji C-Chain, Base, Ethereum Sepolia, and EVM networks.
  */
 
 export const EVM_NETWORKS = {
+  avalancheFuji: {
+    id: 'avalancheFuji',
+    name: 'Avalanche Fuji Testnet',
+    chainId: 43113,
+    rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
+    backupRpcUrl: 'https://avalanche-fuji-c-chain-rpc.publicnode.com',
+    blockExplorer: 'https://testnet.snowtrace.io',
+    faucetUrl: 'https://core.app/tools/testnet-faucet/?subnet=c&token=c',
+    ethFaucetUrl: 'https://core.app/tools/testnet-faucet/?subnet=c&token=c',
+    googleFaucetUrl: 'https://core.app/tools/testnet-faucet/?subnet=c&token=c',
+    symbol: 'AVAX',
+    nativeToken: 'AVAX',
+    tokenSymbol: 'USDC',
+    usdcAddress: import.meta.env?.VITE_USDC_ADDRESS || '0x5425890298aed601595a70AB815c96711a31Bc65',
+    usdcDecimals: 6,
+    vaultAddress: import.meta.env?.VITE_VAULT_ADDRESS || '0xbBB74646C9F5786A39E22f57d3a3e23a47d85eAa',
+    forwarderAddress: import.meta.env?.VITE_FORWARDER_ADDRESS || '0x54ffCA414fA2D5bEe30088a7EC99887ea19B454f',
+    relayerAddress: '0x73585ded2E86D584eaf2fcB8e62A7803910c146B'
+  },
   sepolia: {
     id: 'sepolia',
     name: 'Ethereum Sepolia',
@@ -22,10 +41,10 @@ export const EVM_NETWORKS = {
     symbol: 'ETH',
     nativeToken: 'ETH',
     tokenSymbol: 'USDC',
-    usdcAddress: import.meta.env?.VITE_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    usdcAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     usdcDecimals: 6,
-    vaultAddress: import.meta.env?.VITE_VAULT_ADDRESS || '0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E',
-    forwarderAddress: import.meta.env?.VITE_FORWARDER_ADDRESS || '0xa0c88e92B8d9D49cc256a036f29F47053ad422cC',
+    vaultAddress: '0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E',
+    forwarderAddress: '0xa0c88e92B8d9D49cc256a036f29F47053ad422cC',
     relayerAddress: '0x73585ded2E86D584eaf2fcB8e62A7803910c146B'
   },
   hskTestnet: {
@@ -326,7 +345,7 @@ export async function generateEvmQrDataUrl(dataObject, colorDark = '#000000') {
 /**
  * Queries real native balance from an EVM RPC provider (Sepolia, Base, HSK)
  */
-export async function getEvmBalance(address, rpcUrl = EVM_NETWORKS.sepolia.rpcUrl) {
+export async function getEvmBalance(address, rpcUrl = EVM_NETWORKS.avalancheFuji.rpcUrl) {
   try {
     const formattedAddress = ethers.getAddress(address.toLowerCase());
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -344,8 +363,8 @@ export async function getEvmBalance(address, rpcUrl = EVM_NETWORKS.sepolia.rpcUr
  * - Real ERC-20 token balance (e.g. Circle Sepolia USDC)
  * - PollarOfflineVault status (locked amount, settled amount)
  */
-export async function fetchRealEvmAccountBalances(address, networkId = 'sepolia') {
-  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+export async function fetchRealEvmAccountBalances(address, networkId = 'avalancheFuji') {
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.avalancheFuji;
   if (!address) {
     return {
       success: false,
@@ -505,9 +524,9 @@ export function importEvmAccount(keyOrAddress) {
 export async function depositToVault({
   privateKey,
   amountEth,
-  networkId = 'sepolia'
+  networkId = 'avalancheFuji'
 }) {
-  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.avalancheFuji;
   const targetVault = network.vaultAddress;
 
   if (!targetVault || targetVault === ethers.ZeroAddress) {
@@ -546,9 +565,9 @@ export async function depositTokenToVault({
   tokenAddress,
   amountTokens,
   decimals = 6,
-  networkId = 'sepolia'
+  networkId = 'avalancheFuji'
 }) {
-  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.avalancheFuji;
   const targetVault = network.vaultAddress;
 
   if (!targetVault || targetVault === ethers.ZeroAddress) {
@@ -574,7 +593,7 @@ export async function depositTokenToVault({
       const validBefore = Math.floor(Date.now() / 1000) + 7200; // 2 horas
 
       const domain = {
-        name: 'USDC', // On-chain domain separator name on Sepolia
+        name: network.chainId === 43113 ? 'USD Coin' : 'USDC', // Circle official domain name on Avalanche Fuji
         version: '2',
         chainId: network.chainId,
         verifyingContract: tokenAddress
@@ -648,8 +667,8 @@ export async function depositTokenToVault({
     if (gasBalanceEth < 0.00003) {
       throw new Error(
         `No se pudo completar el depósito gasless a través del Relayer en ${relayerUrl}. ` +
-        `Tu cuenta tiene 0 Sepolia ETH, por lo que requiere el Relayer para patrocinar la transacción. ` +
-        `Asegúrate de que el backend Relayer esté activo y que tu celular y PC estén en la misma red Wi-Fi (URL: ${relayerUrl}). ` +
+        `Tu cuenta tiene 0 AVAX en Avalanche Fuji, por lo que requiere el Relayer para patrocinar el gas de la transacción. ` +
+        `Asegúrate de que el backend Relayer esté activo y accesible (URL: ${relayerUrl}). ` +
         (relayerErrMsg ? `[Detalle: ${relayerErrMsg}]` : '')
       );
     }
@@ -704,9 +723,10 @@ export async function submitRealEvmBatchTransaction({
   payeeAddress,
   amount,
   merkleRootHash,
-  networkId = 'sepolia'
+  networkId = 'avalancheFuji'
 }) {
-  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.sepolia;
+  const network = EVM_NETWORKS[networkId] || EVM_NETWORKS.avalancheFuji;
+  const targetVault = network.vaultAddress;
   console.log(`[EVM] Preparing batch settlement for ${network.name}...`);
 
   const keyToUse = submitterPrivateKey || payerPrivateKey;
@@ -726,13 +746,13 @@ export async function submitRealEvmBatchTransaction({
   // 1. Pre-flight Gas Verification
   const gasBalance = await provider.getBalance(broadcasterAddress);
   const gasBalanceEth = parseFloat(ethers.formatEther(gasBalance));
-  console.log(`[EVM] Submitter ${broadcasterAddress} gas balance: ${gasBalanceEth.toFixed(6)} ETH`);
+  console.log(`[EVM] Submitter ${broadcasterAddress} gas balance: ${gasBalanceEth.toFixed(6)} ${network.symbol || 'AVAX'}`);
 
   const minGasRequired = ethers.parseEther('0.00003');
   if (gasBalance < minGasRequired) {
     // Attempt Gasless Settlement via Relayer
     try {
-      console.log(`[EVM] Submitter no tiene suficiente gas (${gasBalanceEth.toFixed(6)} ETH). Transmitiendo liquidación gasless mediante Relayer...`);
+      console.log(`[EVM] Submitter no tiene suficiente gas (${gasBalanceEth.toFixed(6)} ${network.symbol || 'AVAX'}). Transmitiendo liquidación gasless mediante Relayer...`);
       const relayerUrl = getRelayerUrl();
       const relayerRes = await fetch(`${relayerUrl}/api/relay/settle-batch`, {
         method: 'POST',
@@ -773,13 +793,13 @@ export async function submitRealEvmBatchTransaction({
     }
 
     const err = new Error(
-      `Gas insuficiente en la cuenta transmisora (${broadcasterAddress.slice(0, 6)}...${broadcasterAddress.slice(-4)}). Saldo: ${gasBalanceEth.toFixed(6)} Sepolia ETH. Para registrar este lote en la red Ethereum Sepolia requieres una fracción de Sepolia ETH (ej: 0.001 ETH) para cubrir el gas de la red.`
+      `Gas insuficiente en la cuenta transmisora (${broadcasterAddress.slice(0, 6)}...${broadcasterAddress.slice(-4)}). Saldo: ${gasBalanceEth.toFixed(6)} AVAX. Para registrar este lote en la red Avalanche Fuji Testnet requieres una fracción de AVAX (ej: 0.005 AVAX) para cubrir el gas de la red.`
     );
     err.code = 'INSUFFICIENT_GAS';
     err.submitterAddress = broadcasterAddress;
     err.gasBalance = gasBalanceEth;
-    err.faucetUrl = network.ethFaucetUrl || 'https://sepoliafaucet.com/';
-    err.googleFaucetUrl = network.googleFaucetUrl || 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia';
+    err.faucetUrl = network.ethFaucetUrl || 'https://core.app/tools/testnet-faucet/?subnet=c&token=c';
+    err.googleFaucetUrl = network.googleFaucetUrl || 'https://core.app/tools/testnet-faucet/?subnet=c&token=c';
     throw err;
   }
 
@@ -793,7 +813,6 @@ export async function submitRealEvmBatchTransaction({
   ];
 
   let tx;
-  const targetVault = network.vaultAddress;
   let usedVaultContract = false;
 
   // 2. Determine Settlement Mechanism: Vault Contract Escrow vs Direct On-Chain Anchor

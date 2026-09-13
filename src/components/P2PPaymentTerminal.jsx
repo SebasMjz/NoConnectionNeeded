@@ -387,7 +387,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
   useEffect(() => {
     if (mode === 'receive' && currentAccount.publicKey) {
       generateQrDataUrl({
-        type: 'POLLAR_INVOICE',
+        type: 'AVALANCHE_INVOICE',
         payee: currentAccount.publicKey,
         amount: parseFloat(receiveAmount) || 0,
         asset: currentAccount.asset,
@@ -401,7 +401,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
   useEffect(() => {
     if (pendingTx) {
       generateQrDataUrl({
-        type: 'POLLAR_PAYMENT_PAYLOAD',
+        type: 'AVALANCHE_PAYMENT_PAYLOAD',
         tx: pendingTx
       }).then(setPaymentQr);
     }
@@ -686,7 +686,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
       }
 
       // Case 1: Payer scanned an Invoice QR from Merchant
-      if (data.type === 'POLLAR_INVOICE' || (data.payee && data.amount && !data.txHash && !data.payerSignature)) {
+      if (data.type === 'AVALANCHE_INVOICE' || data.type === 'POLLAR_INVOICE' || (data.payee && data.amount && !data.txHash && !data.payerSignature)) {
         setPayeeAddress(data.payee);
         setPayAmount(data.amount?.toString() || '1.00');
         setPayMemo(data.memo || 'Pago');
@@ -698,7 +698,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
         if (navigator.vibrate) navigator.vibrate([40, 40]);
       } 
       // Case 2: Merchant scanned a Signed Payment Payload from Payer
-      else if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash || (data.payload && data.payerSignature)) {
+      else if (data.type === 'AVALANCHE_PAYMENT_PAYLOAD' || data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash || (data.payload && data.payerSignature)) {
         setHandshakeStep(3);
         const payload = data.tx || data;
         const finalized = await receiveAndCounterSign(payload, 'device_b');
@@ -831,7 +831,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
           });
           await handleExecuteNfcTapToPay(receiveAmount, receiveMemo);
         } else {
-          throw new Error('Formato no reconocido por Pollar. Escanea un QR o toca un dispositivo Pollar.');
+          throw new Error('Formato no reconocido por Avalanche Pay. Escanea un QR o toca un dispositivo Avalanche Pay.');
         }
       }
     } catch (err) {
@@ -1508,7 +1508,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
               <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 300 }}>
                 <button
                   type="button"
-                  onClick={() => downloadQrImage(paymentQr, `pollar_pago_${pendingTx.payload.amount}_${pendingTx.payload.asset}.png`)}
+                  onClick={() => downloadQrImage(paymentQr, `avalanche_pago_${pendingTx.payload.amount}_${pendingTx.payload.asset}.png`)}
                   style={{
                     flex: 1,
                     padding: '10px 12px',
@@ -1531,9 +1531,9 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
                   type="button"
                   onClick={() => shareQrToWhatsApp({
                     dataUrl: paymentQr,
-                    title: 'Pago Offline Pollar Firmado',
+                    title: 'Pago Offline Avalanche Firmado',
                     text: `Comprobante de Pago Firmado:\nMonto: $${pendingTx.payload.amount} ${pendingTx.payload.asset}\nDe: ${pendingTx.payload.payer.slice(0, 8)}...\nPara: ${pendingTx.payload.payee.slice(0, 8)}...\nNonce: #${pendingTx.payload.nonce}`,
-                    filename: `pollar_pago_${pendingTx.payload.amount}.png`
+                    filename: `avalanche_pago_${pendingTx.payload.amount}.png`
                   })}
                   style={{
                     flex: 1,
@@ -1824,7 +1824,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
                   <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 280, marginTop: 2 }}>
                     <button
                       type="button"
-                      onClick={() => downloadQrImage(invoiceQr, `pollar_factura_${receiveAmount}_${currentAccount.asset}.png`)}
+                      onClick={() => downloadQrImage(invoiceQr, `avalanche_factura_${receiveAmount}_${currentAccount.asset}.png`)}
                       style={{
                         flex: 1,
                         padding: '9px 12px',
@@ -1847,9 +1847,9 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
                       type="button"
                       onClick={() => shareQrToWhatsApp({
                         dataUrl: invoiceQr,
-                        title: `Factura de Cobro Pollar: $${receiveAmount} ${currentAccount.asset}`,
-                        text: `Factura de Cobro Pollar:\nMonto: $${receiveAmount} ${currentAccount.asset}\nConcepto: ${receiveMemo || 'Cobro'}\nDestino: ${currentAccount.publicKey.slice(0, 8)}...`,
-                        filename: `pollar_factura_${receiveAmount}.png`
+                        title: `Factura de Cobro Avalanche: $${receiveAmount} ${currentAccount.asset}`,
+                        text: `Factura de Cobro Avalanche:\nMonto: $${receiveAmount} ${currentAccount.asset}\nConcepto: ${receiveMemo || 'Cobro'}\nDestino: ${currentAccount.publicKey.slice(0, 8)}...`,
+                        filename: `avalanche_factura_${receiveAmount}.png`
                       })}
                       style={{
                         flex: 1,
@@ -1999,7 +1999,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
             type="text"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            placeholder='{"type":"POLLAR_INVOICE",...}'
+            placeholder='{"type":"AVALANCHE_INVOICE",...}'
             className="pollar-input"
             style={{ fontSize: 12, fontFamily: 'var(--font-mono)', height: 42 }}
           />
@@ -2162,7 +2162,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
               <textarea
                 value={manualPayload}
                 onChange={(e) => handleParseManualPayload(e.target.value)}
-                placeholder='Pega aquí el JSON del QR... {"type":"POLLAR_PAYMENT_PAYLOAD","tx":{...}}'
+                placeholder='Pega aquí el JSON del QR... {"type":"AVALANCHE_PAYMENT_PAYLOAD","tx":{...}}'
                 style={{
                   width: '100%',
                   minHeight: 120,
@@ -2318,7 +2318,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
                   {confirmationModal.role === 'receive' ? 'Pagador' : 'Comercio / Destino'}
                 </span>
                 <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-                  {confirmationModal.counterparty ? `${confirmationModal.counterparty.slice(0, 6)}...${confirmationModal.counterparty.slice(-4)}` : 'Terminal Pollar'}
+                  {confirmationModal.counterparty ? `${confirmationModal.counterparty.slice(0, 6)}...${confirmationModal.counterparty.slice(-4)}` : 'Terminal Avalanche'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

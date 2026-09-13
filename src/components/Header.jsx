@@ -50,15 +50,15 @@ export default function Header({ onOpenLinkModal, onOpenAndroidModal }) {
       <div className="max-w-md mx-auto sm:max-w-7xl px-4 pt-2.5 pb-2 flex items-center justify-between text-[11px] text-[#94a3b8] border-b border-[rgba(255,255,255,0.04)]">
         <div className="flex items-center gap-2">
           <span className="font-extrabold tracking-tight text-white flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 text-[#00f2fe]" /> POLLAR PAY
+            <Zap className="w-3.5 h-3.5 text-[#E84142]" /> AVALANCHE PAY
           </span>
 
           {/* Network Selector Button */}
           <div className="relative">
             <button
               onClick={() => setShowNetworkMenu(!showNetworkMenu)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-[rgba(0,242,254,0.12)] hover:bg-[rgba(0,242,254,0.2)] text-[#00f2fe] font-mono font-bold text-[10px] border border-[rgba(0,242,254,0.25)] transition-all cursor-pointer"
-              title="Cambiar Red Blockchain (EVM Sepolia / Stellar)"
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-[rgba(232,65,66,0.15)] hover:bg-[rgba(232,65,66,0.25)] text-[#E84142] font-mono font-bold text-[10px] border border-[rgba(232,65,66,0.3)] transition-all cursor-pointer"
+              title="Cambiar Red Blockchain (Avalanche Fuji / Stellar)"
             >
               <Globe className="w-2.5 h-2.5" />
               <span>{isEvm ? `EVM: ${currentEvmNetwork.name}` : 'STELLAR TESTNET'}</span>
@@ -68,31 +68,31 @@ export default function Header({ onOpenLinkModal, onOpenAndroidModal }) {
             {/* Dropdown Menu */}
             {showNetworkMenu && (
               <div 
-                className="absolute left-0 mt-1.5 w-60 rounded-xl bg-[#0e1424] border border-[rgba(0,242,254,0.3)] shadow-2xl p-1.5 z-50 flex flex-col gap-1 text-[11px]"
+                className="absolute left-0 mt-1.5 w-60 rounded-xl bg-[#0e1424] border border-[rgba(232,65,66,0.3)] shadow-2xl p-1.5 z-50 flex flex-col gap-1 text-[11px]"
                 onMouseLeave={() => setShowNetworkMenu(false)}
               >
                 <div className="px-2 py-1 text-[9px] font-mono font-bold text-[#64748b] uppercase tracking-wider">
                   Redes Compatibles
                 </div>
 
-                {/* EVM Sepolia */}
+                {/* EVM Avalanche Fuji */}
                 <button
                   onClick={() => {
                     switchNetwork('evm');
-                    switchEvmChain('sepolia');
+                    switchEvmChain('avalancheFuji');
                     setShowNetworkMenu(false);
                   }}
                   className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-all ${
-                    isEvm && activeEvmChain === 'sepolia'
-                      ? 'bg-[rgba(0,242,254,0.15)] text-[#00f2fe] font-bold border border-[rgba(0,242,254,0.3)]'
+                    isEvm && activeEvmChain === 'avalancheFuji'
+                      ? 'bg-[rgba(232,65,66,0.15)] text-[#E84142] font-bold border border-[rgba(232,65,66,0.3)]'
                       : 'text-white hover:bg-[rgba(255,255,255,0.06)]'
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-[#627EEA]" />
-                    <span>Ethereum Sepolia (EVM)</span>
+                    <div className="w-2 h-2 rounded-full bg-[#E84142]" />
+                    <span>Avalanche Fuji C-Chain (EVM)</span>
                   </div>
-                  {isEvm && activeEvmChain === 'sepolia' && <Check className="w-3 h-3 text-[#00f2fe]" />}
+                  {isEvm && activeEvmChain === 'avalancheFuji' && <Check className="w-3 h-3 text-[#E84142]" />}
                 </button>
 
                 {/* EVM HashKey Testnet */}

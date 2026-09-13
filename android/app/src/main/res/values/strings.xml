@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Pollar Stellar Offline</string>
-    <string name="title_activity_main">Pollar Stellar Offline</string>
+    <string name="app_name">Avalanche Offline Pay</string>
+    <string name="title_activity_main">Avalanche Offline Pay</string>
     <string name="package_name">com.pollar.stellarp2p</string>
     <string name="custom_url_scheme">com.pollar.stellarp2p</string>
 </resources>

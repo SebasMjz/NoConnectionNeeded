@@ -45,8 +45,8 @@ export function WalletProvider({ children }) {
     }
   });
 
-  // Active EVM Chain: 'sepolia' (Default) | 'hskTestnet' | 'baseSepolia'
-  const [activeEvmChain, setActiveEvmChain] = useState('sepolia');
+  // Active EVM Chain: 'avalancheFuji' (Default) | 'sepolia' | 'baseSepolia'
+  const [activeEvmChain, setActiveEvmChain] = useState('avalancheFuji');
 
   // Device Selection: 'device_a' (Payer) | 'device_b' (Payee/Merchant) | 'dual_sim' (Split View)
   const [activeDevice, setActiveDevice] = useState('device_a');
@@ -203,11 +203,11 @@ export function WalletProvider({ children }) {
       clearTimeout(timeoutId);
       return res.ok;
     } catch (err) {
-      // Secondary fallback probe to Sepolia RPC
+      // Secondary fallback probe to Avalanche Fuji RPC
       try {
         const controller2 = new AbortController();
         const timeoutId2 = setTimeout(() => controller2.abort(), 2600);
-        const rpcUrl = EVM_NETWORKS[activeEvmChain]?.rpcUrl || 'https://sepolia.drpc.org';
+        const rpcUrl = EVM_NETWORKS[activeEvmChain]?.rpcUrl || 'https://api.avax-test.network/ext/bc/C/rpc';
         const res2 = await fetch(rpcUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -391,7 +391,7 @@ export function WalletProvider({ children }) {
                   return {
                     ...tx,
                     status: 'SYNCED_ONCHAIN',
-                    syncedBy: 'Smart Contract Escrow (Liquidado en Sepolia)',
+                    syncedBy: 'Smart Contract Escrow (Liquidado en Avalanche Fuji)',
                     syncedAt: Date.now()
                   };
                 }
@@ -448,7 +448,7 @@ export function WalletProvider({ children }) {
 
     setAutoSyncStatus({
       status: 'syncing',
-      message: `Conexión detectada: Sincronizando ${pendingTxs.length} transacción(es) en Sepolia...`,
+      message: `Conexión detectada: Sincronizando ${pendingTxs.length} transacción(es) en Avalanche Fuji...`,
       timestamp: Date.now()
     });
 
@@ -475,7 +475,7 @@ export function WalletProvider({ children }) {
         const res = await syncToNetwork('AUTO_ONLINE');
         setAutoSyncStatus({
           status: 'success',
-          message: `¡Sincronizado automáticamente en ${isEvm ? 'Sepolia' : 'Stellar'}! (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})`,
+          message: `¡Sincronizado automáticamente en ${isEvm ? 'Avalanche Fuji' : 'Stellar'}! (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})`,
           timestamp: Date.now()
         });
 
@@ -486,7 +486,7 @@ export function WalletProvider({ children }) {
         setAutoSyncStatus({
           status: 'error',
           message: isGasErr
-            ? 'Requiere una fracción de Sepolia ETH para cubrir el gas de la red.'
+            ? 'Requiere una fracción de AVAX para cubrir el gas de la red.'
             : `Auto-sync en pausa: ${err.message || 'Error de conexión'}`,
           timestamp: Date.now(),
           isGasError: isGasErr
@@ -578,7 +578,7 @@ export function WalletProvider({ children }) {
   };
 
   // 3. Create & Sign Offline Payment (Device A / Payer)
-  const createOfflinePayment = async (payeeAddress, amount, memo = 'Pago Offline Pollar') => {
+  const createOfflinePayment = async (payeeAddress, amount, memo = 'Pago Offline Avalanche') => {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) throw new Error('El monto debe ser mayor a 0');
 
@@ -746,7 +746,7 @@ export function WalletProvider({ children }) {
       }
 
       const totalSyncedAmount = pendingSyncTxs.reduce((acc, tx) => acc + tx.payload.amount, 0);
-      const currentSubmitter = myWallet?.name || 'Mi Billetera Pollar';
+      const currentSubmitter = myWallet?.name || 'Mi Billetera Avalanche';
       const submitterAccount = myWallet;
 
       let syncResult;
@@ -863,7 +863,7 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // Fund EVM Smart Contract Vault (locks Sepolia ETH in PollarVault for Payer A)
+  // Fund EVM Smart Contract Vault (locks AVAX in AvalancheVault for Payer A)
   const fundEvmVault = async (amountEth = '0.001') => {
     if (!isEvm) throw new Error('El depósito en bóveda sólo está disponible en redes EVM.');
     const res = await depositToVault({
@@ -878,7 +878,7 @@ export function WalletProvider({ children }) {
   // Fund EVM Smart Contract Vault with ERC-20 Tokens (USDC / USDT)
   const fundEvmTokenVault = async (amountTokens = '1') => {
     if (!isEvm) throw new Error('El depósito en bóveda sólo está disponible en redes EVM.');
-    const network = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
+    const network = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.avalancheFuji;
     if (!network.usdcAddress) {
       throw new Error(`No hay token USDC configurado para ${network.name}`);
     }
@@ -904,9 +904,9 @@ export function WalletProvider({ children }) {
       return {
         success: true,
         isEvm: true,
-        network: EVM_NETWORKS[activeEvmChain]?.name || 'Ethereum Sepolia',
-        faucetUrl: EVM_NETWORKS[activeEvmChain]?.faucetUrl || 'https://faucet.circle.com/',
-        ethFaucetUrl: EVM_NETWORKS[activeEvmChain]?.ethFaucetUrl || 'https://sepoliafaucet.com/'
+        network: EVM_NETWORKS[activeEvmChain]?.name || 'Avalanche Fuji Testnet',
+        faucetUrl: EVM_NETWORKS[activeEvmChain]?.faucetUrl || 'https://core.app/tools/testnet-faucet/?subnet=c&token=c',
+        ethFaucetUrl: EVM_NETWORKS[activeEvmChain]?.ethFaucetUrl || 'https://core.app/tools/testnet-faucet/?subnet=c&token=c'
       };
     } else {
       const target = pubKey || deviceA.publicKey;
@@ -945,7 +945,7 @@ export function WalletProvider({ children }) {
   };
 
   const loginWithGoogle = (customEmail = null) => {
-    const email = customEmail || 'usuario.pollar@gmail.com';
+    const email = customEmail || 'usuario.avalanche@gmail.com';
     const user = {
       id: 'usr_g_' + Math.random().toString(36).substring(2, 9),
       email,
@@ -984,8 +984,8 @@ export function WalletProvider({ children }) {
     const pub = (isEvm ? evmWallet : stellarWallet).publicKey;
     const user = {
       id: 'usr_' + (pub ? pub.slice(0, 8) : 'wallet'),
-      email: 'mi.billetera@pollar.io',
-      name: 'Mi Billetera Pollar',
+      email: 'mi.billetera@avax.network',
+      name: 'Mi Billetera Avalanche',
       provider: 'preset',
       role: 'device_a',
       publicKey: pub,
@@ -1011,7 +1011,7 @@ export function WalletProvider({ children }) {
     const st = generateRealStellarKeypair();
 
     setEvmWallet({
-      name: 'Mi Billetera EVM',
+      name: 'Mi Billetera Avalanche',
       publicKey: evm.address,
       secretKey: evm.privateKey,
       address: evm.address,

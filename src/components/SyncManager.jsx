@@ -43,11 +43,11 @@ export default function SyncManager() {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [isRefreshingGas, setIsRefreshingGas] = useState(false);
 
-  const currentEvmNetwork = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.sepolia;
+  const currentEvmNetwork = EVM_NETWORKS[activeEvmChain] || EVM_NETWORKS.avalancheFuji;
   const targetNetworkName = isEvm ? currentEvmNetwork.name : 'Stellar Testnet';
 
   const submitterAccount = myWallet || deviceA;
-  const submitterRole = 'Mi Billetera Pollar';
+  const submitterRole = 'Mi Billetera Avalanche';
   const submitterGas = isEvm ? (submitterAccount?.nativeBalance || 0) : 0;
 
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
@@ -120,7 +120,7 @@ export default function SyncManager() {
             {pendingTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-            ${totalPending.toFixed(2)} {isEvm ? 'USDC (Sepolia)' : 'USDT'} offline
+            ${totalPending.toFixed(2)} {isEvm ? 'USDC (Fuji)' : 'USDT'} offline
           </span>
         </div>
 
@@ -202,7 +202,7 @@ export default function SyncManager() {
               </span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                 {autoSyncEnabled 
-                  ? 'Activo: Transmite pagos offline a Sepolia ni bien detecta internet' 
+                  ? 'Activo: Transmite pagos offline a Avalanche Fuji ni bien detecta internet' 
                   : 'Pausado: Se sincroniza únicamente al pulsar el botón'}
               </span>
             </div>
@@ -252,7 +252,7 @@ export default function SyncManager() {
                 background: submitterGas > 0.00005 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.2)',
                 color: submitterGas > 0.00005 ? '#065F46' : '#92400E'
               }}>
-                {submitterGas > 0.00005 ? 'Gas Listo' : 'Requiere Gas Sepolia ETH'}
+                {submitterGas > 0.00005 ? 'Gas Listo' : 'Requiere Gas AVAX (Fuji)'}
               </span>
             </div>
 
@@ -261,14 +261,14 @@ export default function SyncManager() {
                 {submitterAccount?.publicKey ? `${submitterAccount.publicKey.slice(0, 8)}...${submitterAccount.publicKey.slice(-6)}` : ''}
               </span>
               <span style={{ fontWeight: 800, color: submitterGas > 0.00005 ? '#10B981' : '#D97706' }}>
-                {submitterGas.toFixed(5)} Sepolia ETH
+                {submitterGas.toFixed(5)} AVAX
               </span>
             </div>
 
             {submitterGas <= 0.00005 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                 <p style={{ fontSize: 11, color: '#B45309', margin: 0, lineHeight: 1.4 }}>
-                  Para registrar y asentar transacciones on-chain en Sepolia se requiere una pequeña cantidad de Sepolia ETH para el gas de los mineros.
+                  Para registrar y asentar transacciones on-chain en Avalanche se requiere una pequeña cantidad de AVAX para el gas de los validadores.
                 </p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button
@@ -292,7 +292,7 @@ export default function SyncManager() {
                     {copiedAddress ? '¡Copiado!' : 'Copiar Dirección'}
                   </button>
                   <a
-                    href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia"
+                    href="https://core.app/tools/testnet-faucet/?subnet=c&token=c"
                     target="_blank"
                     rel="noreferrer"
                     style={{
@@ -308,11 +308,11 @@ export default function SyncManager() {
                       textDecoration: 'none'
                     }}
                   >
-                    <span>Faucet Google Web3</span>
+                    <span>Core AVAX Faucet</span>
                     <ExternalLink size={12} />
                   </a>
                   <a
-                    href="https://sepoliafaucet.com/"
+                    href="https://faucet.avax.network/"
                     target="_blank"
                     rel="noreferrer"
                     style={{
@@ -321,14 +321,14 @@ export default function SyncManager() {
                       gap: 4,
                       padding: '6px 10px',
                       borderRadius: 10,
-                      background: 'rgba(0, 98, 255, 0.1)',
+                      background: 'rgba(232, 65, 66, 0.12)',
                       color: 'var(--pollar-blue)',
                       fontSize: 11,
                       fontWeight: 700,
                       textDecoration: 'none'
                     }}
                   >
-                    <span>SepoliaFaucet</span>
+                    <span>Avalanche Faucet</span>
                     <ExternalLink size={12} />
                   </a>
                   <button
@@ -436,7 +436,7 @@ export default function SyncManager() {
                   {copiedAddress ? '¡Copiado!' : 'Copiar Dirección'}
                 </button>
                 <a
-                  href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia"
+                  href="https://core.app/tools/testnet-faucet/?subnet=c&token=c"
                   target="_blank"
                   rel="noreferrer"
                   style={{
@@ -452,11 +452,11 @@ export default function SyncManager() {
                     textDecoration: 'none'
                   }}
                 >
-                  <span>Faucet Google Web3</span>
+                  <span>Core AVAX Faucet</span>
                   <ExternalLink size={12} />
                 </a>
                 <a
-                  href="https://sepoliafaucet.com/"
+                  href="https://faucet.avax.network/"
                   target="_blank"
                   rel="noreferrer"
                   style={{
@@ -465,14 +465,14 @@ export default function SyncManager() {
                     gap: 4,
                     padding: '6px 10px',
                     borderRadius: 10,
-                    background: 'rgba(0, 98, 255, 0.1)',
+                    background: 'rgba(232, 65, 66, 0.12)',
                     color: 'var(--pollar-blue)',
                     fontSize: 11,
                     fontWeight: 700,
                     textDecoration: 'none'
                   }}
                 >
-                  <span>SepoliaFaucet</span>
+                  <span>Avalanche Faucet</span>
                   <ExternalLink size={12} />
                 </a>
               </div>
@@ -503,7 +503,7 @@ export default function SyncManager() {
                   rel="noreferrer"
                   style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  {isEvm ? 'Etherscan Sepolia' : 'StellarExpert'} <ArrowUpRight size={14} />
+                  {isEvm ? 'Snowtrace Fuji' : 'StellarExpert'} <ArrowUpRight size={14} />
                 </a>
               )}
             </div>
@@ -521,7 +521,7 @@ export default function SyncManager() {
                 }}>
                   {lastSyncResult.usedVaultContract 
                     ? '🏦 Liquidado mediante Smart Contract Vault · Fondos transferidos on-chain a la wallet del comercio' 
-                    : '⚓ Anclaje de Datos On-Chain: Registrado en Sepolia con prueba Merkle. (Para que el contrato transfiera dinero real on-chain, el Pagador debe fondear su Smart Contract Vault previamente).'}
+                    : '⚓ Anclaje de Datos On-Chain: Registrado en Avalanche Fuji con prueba Merkle. (Para que el contrato transfiera dinero real on-chain, el Pagador debe fondear su Smart Contract Vault previamente).'}
                 </div>
               )}
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -589,7 +589,7 @@ export default function SyncManager() {
                   0x0000000000000000000000000000000000000000000000000000000000000000
                 </div>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, margin: 0 }}>
-                  <strong>¿Por qué ves ceros?</strong> Este es el valor nulo estándar en Ethereum (<code>bytes32(0)</code>) cuando aún no hay pagos en el lote offline. En cuanto firmes y contrafirmes tu primer pago, este hash cambiará automáticamente calculando la raíz criptográfica Keccak-256 de todas las transacciones.
+                  <strong>¿Por qué ves ceros?</strong> Este es el valor nulo estándar en Avalanche / EVM (<code>bytes32(0)</code>) cuando aún no hay pagos en el lote offline. En cuanto firmes y contrafirmes tu primer pago, este hash cambiará automáticamente calculando la raíz criptográfica Keccak-256 de todas las transacciones.
                 </p>
               </div>
             ) : (

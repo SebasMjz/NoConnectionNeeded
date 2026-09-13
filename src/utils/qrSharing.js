@@ -3,7 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 /**
  * Downloads a QR code data URL as a PNG image file
  */
-export function downloadQrImage(dataUrl, filename = 'pollar_qr.png') {
+export function downloadQrImage(dataUrl, filename = 'avalanche_qr.png') {
   try {
     const link = document.createElement('a');
     link.href = dataUrl;
@@ -21,7 +21,7 @@ export function downloadQrImage(dataUrl, filename = 'pollar_qr.png') {
 /**
  * Shares a QR code image and text summary to WhatsApp or native share sheet
  */
-export async function shareQrToWhatsApp({ dataUrl, title = 'Pollar QR', text = '', filename = 'pollar_qr.png' }) {
+export async function shareQrToWhatsApp({ dataUrl, title = 'Avalanche QR', text = '', filename = 'avalanche_qr.png' }) {
   // 1. Try sharing image file via Web Share API (native share on Android/iOS)
   try {
     if (navigator.share && navigator.canShare && dataUrl) {
@@ -32,7 +32,7 @@ export async function shareQrToWhatsApp({ dataUrl, title = 'Pollar QR', text = '
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({
           title: title,
-          text: text ? `${text}\n_Pollar Offline Pay_` : '_Pollar Offline Pay_',
+          text: text ? `${text}\n_Avalanche Offline Pay_` : '_Avalanche Offline Pay_',
           files: [file]
         });
         return { success: true, method: 'native_share' };
@@ -49,7 +49,7 @@ export async function shareQrToWhatsApp({ dataUrl, title = 'Pollar QR', text = '
 
   // 2. Direct WhatsApp Web / App intent fallback with formatted message
   try {
-    const whatsappMessage = `${title ? `*${title}*\n` : ''}${text ? `${text}\n\n` : ''}_Enviado desde Pollar Offline Pay_`;
+    const whatsappMessage = `${title ? `*${title}*\n` : ''}${text ? `${text}\n\n` : ''}_Enviado desde Avalanche Offline Pay_`;
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappMessage)}`;
     window.open(whatsappUrl, '_blank');
     return { success: true, method: 'whatsapp_url' };
@@ -66,10 +66,10 @@ export async function scanQrFromImageFile(file) {
   if (!file) throw new Error('No se seleccionó ningún archivo de imagen');
 
   // Ensure helper off-screen element exists for Html5Qrcode
-  let helperElem = document.getElementById('pollar-file-reader-target');
+  let helperElem = document.getElementById('avax-file-reader-target');
   if (!helperElem) {
     helperElem = document.createElement('div');
-    helperElem.id = 'pollar-file-reader-target';
+    helperElem.id = 'avax-file-reader-target';
     helperElem.style.position = 'fixed';
     helperElem.style.left = '-9999px';
     helperElem.style.top = '-9999px';
@@ -81,7 +81,7 @@ export async function scanQrFromImageFile(file) {
     document.body.appendChild(helperElem);
   }
 
-  const html5QrCode = new Html5Qrcode('pollar-file-reader-target');
+  const html5QrCode = new Html5Qrcode('avax-file-reader-target');
   try {
     const decodedText = await html5QrCode.scanFile(file, false);
     try {

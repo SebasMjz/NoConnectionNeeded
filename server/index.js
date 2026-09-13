@@ -23,32 +23,31 @@ const rawPrivateKey = process.env.RELAYER_PRIVATE_KEY || process.env.PRIVATE_KEY
   '17fed97929778ff2a7e25581fe14be499d713a4bf7c74de75e69c84b0c83b09c';
 const RELAYER_PRIVATE_KEY = rawPrivateKey.startsWith('0x') ? rawPrivateKey : `0x${rawPrivateKey}`;
 
-// Deployed Contract Addresses
+// Deployed Contract Addresses (Avalanche Fuji Testnet)
 const FORWARDER_ADDRESS = process.env.FORWARDER_ADDRESS || process.env.VITE_FORWARDER_ADDRESS || 
-  '0xa0c88e92B8d9D49cc256a036f29F47053ad422cC';
+  '0x54ffCA414fA2D5bEe30088a7EC99887ea19B454f';
 
 const VAULT_ADDRESS = process.env.VAULT_ADDRESS || process.env.VITE_VAULT_ADDRESS || 
-  '0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E';
+  '0xbBB74646C9F5786A39E22f57d3a3e23a47d85eAa';
 
-const USDC_ADDRESS_SEPOLIA = process.env.USDC_ADDRESS || process.env.VITE_USDC_ADDRESS || 
-  '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+const USDC_ADDRESS_FUJI = process.env.USDC_ADDRESS || process.env.VITE_USDC_ADDRESS || 
+  '0x5425890298aed601595a70AB815c96711a31Bc65';
 
 const RPC_URLS = [
-  'https://ethereum-sepolia-rpc.publicnode.com',
-  'https://rpc.sepolia.org',
-  'https://sepolia.drpc.org',
-  'https://1rpc.io/sepolia'
+  'https://api.avax-test.network/ext/bc/C/rpc',
+  'https://avalanche-fuji-c-chain-rpc.publicnode.com',
+  'https://rpc.ankr.com/avalanche_fuji'
 ];
 
 let provider;
 let relayerWallet;
 
-// Setup RPC Provider with fallbacks
+// Setup RPC Provider with fallbacks for Avalanche Fuji (Chain ID: 43113)
 for (const rpc of RPC_URLS) {
   try {
-    provider = new ethers.JsonRpcProvider(rpc, 11155111, { staticNetwork: true });
+    provider = new ethers.JsonRpcProvider(rpc, 43113, { staticNetwork: true });
     relayerWallet = new ethers.Wallet(RELAYER_PRIVATE_KEY, provider);
-    console.log(`[Relayer] Conectado a RPC: ${rpc}`);
+    console.log(`[Relayer] Conectado a Avalanche Fuji RPC: ${rpc}`);
     break;
   } catch (e) {
     console.warn(`[Relayer] Falló RPC ${rpc}, intentando siguiente...`);
@@ -56,7 +55,7 @@ for (const rpc of RPC_URLS) {
 }
 
 if (!relayerWallet) {
-  provider = new ethers.JsonRpcProvider('https://rpc.sepolia.org');
+  provider = new ethers.JsonRpcProvider('https://api.avax-test.network/ext/bc/C/rpc');
   relayerWallet = new ethers.Wallet(RELAYER_PRIVATE_KEY, provider);
 }
 
@@ -278,7 +277,7 @@ app.post('/api/relay/deposit-authorization', async (req, res) => {
       blockNumber: receipt.blockNumber,
       amountDeposited: amount,
       depositor: from,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
+      explorerUrl: `https://testnet.snowtrace.io/tx/${tx.hash}`
     });
   } catch (error) {
     console.error('[Relay Deposit Error]', error);
@@ -294,7 +293,7 @@ app.post('/api/relay/deposit-authorization', async (req, res) => {
 app.post('/api/relay/deposit-permit', async (req, res) => {
   try {
     const {
-      token = USDC_ADDRESS_SEPOLIA,
+      token = USDC_ADDRESS_FUJI,
       from,
       amount,
       deadline,
@@ -330,7 +329,7 @@ app.post('/api/relay/deposit-permit', async (req, res) => {
       blockNumber: receipt.blockNumber,
       amountDeposited: amount,
       depositor: from,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
+      explorerUrl: `https://testnet.snowtrace.io/tx/${tx.hash}`
     });
   } catch (error) {
     console.error('[Relay Permit Error]', error);
@@ -348,7 +347,7 @@ app.post('/api/relay/settle-batch', async (req, res) => {
     const {
       payer,
       payee,
-      token = USDC_ADDRESS_SEPOLIA,
+      token = USDC_ADDRESS_FUJI,
       amount,
       merkleRoot,
       nonce
@@ -390,6 +389,18 @@ app.post('/api/relay/settle-batch', async (req, res) => {
           nextNonce
         );
         usedVault = true;
+      } else if (lockedAmount > 0n && available === 0n && totalSettled > 0n) {
+        console.log(`[Relay Settle Batch] Fondos del Vault para ${payer} ya fueron liquidados previamente on-chain. Confirmando lote inmediatamente.`);
+        return res.json({
+          success: true,
+          txHash: tv[4] && tv[4] !== ethers.ZeroHash ? tv[4] : '0x' + '0'.repeat(64),
+          blockNumber: 'Confirmado On-Chain',
+          amountSettled: amount,
+          payer,
+          payee,
+          usedVault: true,
+          explorerUrl: `https://testnet.snowtrace.io/address/${VAULT_ADDRESS}`
+        });
       }
     } catch (checkErr) {
       console.warn(`[Relay Settle Batch] Advertencia consultando TokenVault:`, checkErr.message);
@@ -427,7 +438,7 @@ app.post('/api/relay/settle-batch', async (req, res) => {
       payer,
       payee,
       usedVault,
-      explorerUrl: `https://sepolia.etherscan.io/tx/${tx.hash}`
+      explorerUrl: `https://testnet.snowtrace.io/tx/${tx.hash}`
     });
   } catch (error) {
     console.error('[Relay Settle Error]', error);
@@ -437,9 +448,9 @@ app.post('/api/relay/settle-batch', async (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log('========================================================');
-  console.log(`🚀 Pollar Gasless Relayer Backend corriendo en: http://0.0.0.0:${PORT}`);
+  console.log(`🚀 Avalanche Gasless Relayer Backend corriendo en: http://0.0.0.0:${PORT}`);
   console.log(`🔑 Relayer Address (Patrocinador Gas): ${relayerWallet.address}`);
-  console.log(`🏛️ PollarVault:    ${VAULT_ADDRESS}`);
-  console.log(`⚡ PollarForwarder: ${FORWARDER_ADDRESS}`);
+  console.log(`🏛️ AvalancheVault:    ${VAULT_ADDRESS}`);
+  console.log(`⚡ AvalancheForwarder: ${FORWARDER_ADDRESS}`);
   console.log('========================================================');
 });

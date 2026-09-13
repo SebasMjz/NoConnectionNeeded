@@ -1,6 +1,6 @@
 {
-  "short_name": "Pollar Offline",
-  "name": "Pollar - Billetera Offline Stellar P2P",
+  "short_name": "Avalanche Pay",
+  "name": "Avalanche - Billetera Offline Web3 P2P",
   "icons": [
     {
       "src": "/vite.svg",
@@ -9,8 +9,8 @@
     }
   ],
   "start_url": "/",
-  "background_color": "#07090e",
-  "theme_color": "#00f2fe",
+  "background_color": "#0B0E14",
+  "theme_color": "#E84142",
   "display": "standalone",
   "orientation": "portrait"
 }

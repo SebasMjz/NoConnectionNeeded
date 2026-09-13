@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { WalletProvider, useWallet } from './context/WalletContext';
 import AuthGateway from './components/AuthGateway';
-import PollarLogo from './components/PollarLogo';
+import AvalancheLogo from './components/AvalancheLogo';
 import WalletVault from './components/WalletVault';
 import P2PPaymentTerminal from './components/P2PPaymentTerminal';
 import SyncManager from './components/SyncManager';
@@ -64,22 +64,22 @@ function AppContent() {
       {/* Top Header */}
       <header className="pollar-header">
         <div className="pollar-user-pill">
-          {/* Official Pollar Bear Brand Badge */}
+          {/* Official Avalanche Brand Badge */}
           <div 
             style={{ 
               width: 42, 
               height: 42, 
               borderRadius: 14, 
-              background: '#EEF5FF', 
-              border: '1.5px solid rgba(0, 98, 255, 0.18)', 
+              background: '#FFF5F5', 
+              border: '1.5px solid rgba(232, 65, 66, 0.25)', 
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
               flexShrink: 0,
-              boxShadow: '0 2px 8px rgba(0, 98, 255, 0.1)'
+              boxShadow: '0 2px 8px rgba(232, 65, 66, 0.18)'
             }}
           >
-            <PollarLogo size={26} showText={false} />
+            <AvalancheLogo size={28} showText={false} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
@@ -90,11 +90,11 @@ function AppContent() {
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--pollar-blue)', letterSpacing: '-0.2px' }}>
-                pollar pay
+              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--avax-red, #E84142)', letterSpacing: '-0.2px' }}>
+                avalanche pay
               </span>
-              <span style={{ fontSize: 9, fontWeight: 800, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
-                TESTNET
+              <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(232, 65, 66, 0.12)', color: '#E84142', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
+                FUJI
               </span>
             </div>
           </div>
@@ -123,7 +123,7 @@ function AppContent() {
               isSimulatingOffline
                 ? 'Modo Offline Simulado activo. Pulsa para volver a Online.'
                 : isOnline
-                  ? 'Conectado a Internet (Sepolia). Pulsa para simular Modo Offline.'
+                  ? 'Conectado a Internet (Avalanche Fuji). Pulsa para simular Modo Offline.'
                   : 'Sin conexión a Internet en el dispositivo. Pulsa para verificar.'
             }
           >

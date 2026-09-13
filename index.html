@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#07090e" />
-    <meta name="description" content="Pollar - Billetera Web y Android para Pagos Offline en Stellar con Go Core, Árbol de Merkle y Sincronización Automática" />
+    <meta name="theme-color" content="#E84142" />
+    <meta name="description" content="Avalanche Pay - Billetera Web y Android para Pagos Offline en Avalanche C-Chain con Árbol de Merkle y Sincronización Automática" />
     <link rel="manifest" href="/manifest.json" />
-    <title>Pollar • Offline Stellar P2P Wallet (Go Engine)</title>
+    <title>Avalanche • Offline P2P Web3 Wallet</title>
     <!-- Load Go WebAssembly runtime support -->
     <script src="/wasm_exec.js"></script>
     <script>
@@ -15,9 +15,9 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').then((reg) => {
-            console.log('[Pollar PWA] Service Worker registrado:', reg.scope);
+            console.log('[Avalanche PWA] Service Worker registrado:', reg.scope);
           }).catch((err) => {
-            console.warn('[Pollar PWA] Fallo de registro de Service Worker:', err);
+            console.warn('[Avalanche PWA] Fallo de registro de Service Worker:', err);
           });
         });
       }

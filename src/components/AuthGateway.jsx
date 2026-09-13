@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
-import PollarLogo from './PollarLogo';
+import AvalancheLogo from './AvalancheLogo';
 import WalletConnectModal from './WalletConnectModal';
 import { 
   Mail, 
@@ -85,7 +85,7 @@ export default function AuthGateway({ onLoginSuccess }) {
   const handleGoogleLogin = () => {
     setIsLoading(true);
     setTimeout(() => {
-      loginWithGoogle(email && email.includes('@') ? email : 'usuario.pollar@gmail.com');
+      loginWithGoogle(email && email.includes('@') ? email : 'usuario.avalanche@gmail.com');
       setIsLoading(false);
       if (onLoginSuccess) onLoginSuccess();
     }, 450);
@@ -122,7 +122,7 @@ export default function AuthGateway({ onLoginSuccess }) {
         
         {/* Brand Header */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
-          <PollarLogo size={58} showText={true} textColor="text-slate-900" textSize="text-3xl" />
+          <AvalancheLogo size={62} showText={true} textColor="#0F172A" textSize={28} />
           <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
             {step === 'input' ? 'Iniciar sesión o registrarse' : 'Código de verificación'}
           </p>
@@ -315,10 +315,10 @@ export default function AuthGateway({ onLoginSuccess }) {
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, color: 'var(--text-light)', fontWeight: 500, paddingTop: 4 }}>
-          <span>Protegido por</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--pollar-blue)', fontWeight: 800 }}>
-            <PollarLogo size={14} showText={false} />
-            <span>pollar</span>
+          <span>Impulsado por</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--avax-red, #E84142)', fontWeight: 800 }}>
+            <AvalancheLogo size={16} />
+            <span>Avalanche Fuji</span>
           </div>
         </div>
       </div>
