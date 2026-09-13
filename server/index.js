@@ -128,7 +128,9 @@ app.get('/api/forwarder/nonce/:address', async (req, res) => {
 // P2P TERMINAL SYNC & VOUCHER EXCHANGE
 // ==========================================
 let activeTerminalSession = null;
+const activeTerminals = new Map();
 const pendingVouchersForMerchant = new Map();
+let latestTerminalVoucher = null;
 
 /**
  * @route POST /api/terminal/active
@@ -137,7 +139,7 @@ const pendingVouchersForMerchant = new Map();
 app.post('/api/terminal/active', (req, res) => {
   const { merchantAddress, amount, memo, asset = 'USDC' } = req.body;
   if (!merchantAddress) return res.status(400).json({ error: 'merchantAddress required' });
-  activeTerminalSession = {
+  const termData = {
     merchantAddress: merchantAddress.toLowerCase(),
     originalAddress: merchantAddress,
     amount: parseFloat(amount) || 1.0,
@@ -145,8 +147,10 @@ app.post('/api/terminal/active', (req, res) => {
     asset,
     updatedAt: Date.now()
   };
-  console.log(`[Terminal] Terminal activa registrada por ${merchantAddress}: $${activeTerminalSession.amount} ${asset}`);
-  res.json({ success: true, terminal: activeTerminalSession });
+  activeTerminalSession = termData;
+  activeTerminals.set(merchantAddress.toLowerCase(), termData);
+  console.log(`[Terminal] Terminal activa registrada por ${merchantAddress}: $${termData.amount} ${asset}`);
+  res.json({ success: true, terminal: termData });
 });
 
 /**
@@ -154,10 +158,31 @@ app.post('/api/terminal/active', (req, res) => {
  * @notice Customer or reader checks for the active POS terminal
  */
 app.get('/api/terminal/active', (req, res) => {
-  if (!activeTerminalSession || (Date.now() - activeTerminalSession.updatedAt > 180000)) {
+  const caller = (req.query.callerAddress || '').toLowerCase();
+  const now = Date.now();
+
+  // 1. If a caller is specified, find a candidate that is NOT the caller
+  let candidate = null;
+  if (caller) {
+    for (const [addr, term] of activeTerminals.entries()) {
+      if (now - term.updatedAt <= 180000 && addr !== caller) {
+        candidate = term;
+        break;
+      }
+    }
+  }
+
+  // 2. Fallback to activeTerminalSession if valid
+  if (!candidate && activeTerminalSession && (now - activeTerminalSession.updatedAt <= 180000)) {
+    if (!caller || activeTerminalSession.merchantAddress !== caller) {
+      candidate = activeTerminalSession;
+    }
+  }
+
+  if (!candidate) {
     return res.json({ active: false, terminal: null });
   }
-  res.json({ active: true, terminal: activeTerminalSession });
+  res.json({ active: true, terminal: candidate });
 });
 
 /**
@@ -165,13 +190,22 @@ app.get('/api/terminal/active', (req, res) => {
  * @notice Customer submits their signed offline voucher for the merchant
  */
 app.post('/api/terminal/voucher', (req, res) => {
-  const { voucher, merchantAddress } = req.body;
-  if (!voucher || !merchantAddress) {
-    return res.status(400).json({ error: 'voucher and merchantAddress required' });
+  const { voucher, merchantAddress, payerAddress } = req.body;
+  if (!voucher) {
+    return res.status(400).json({ error: 'voucher required' });
   }
-  const key = merchantAddress.toLowerCase();
-  pendingVouchersForMerchant.set(key, voucher);
-  console.log(`[Terminal] Voucher recibido del cliente para comercio ${merchantAddress}: $${voucher.payload?.amount}`);
+  const key = (merchantAddress || '').toLowerCase();
+  if (key) {
+    pendingVouchersForMerchant.set(key, voucher);
+  }
+  latestTerminalVoucher = {
+    voucher,
+    merchantAddress: key,
+    payerAddress: payerAddress ? payerAddress.toLowerCase() : null,
+    createdAt: Date.now()
+  };
+  const amt = voucher.payload?.amount || voucher.tx?.payload?.amount || '1.0';
+  console.log(`[Terminal] Voucher recibido del cliente para comercio ${merchantAddress || 'auto'}: $${amt}`);
   res.json({ success: true });
 });
 
@@ -180,13 +214,45 @@ app.post('/api/terminal/voucher', (req, res) => {
  * @notice Merchant polls for incoming vouchers from customers
  */
 app.get('/api/terminal/poll-voucher/:merchantAddress', (req, res) => {
-  const key = req.params.merchantAddress.toLowerCase();
-  if (pendingVouchersForMerchant.has(key)) {
-    const voucher = pendingVouchersForMerchant.get(key);
-    pendingVouchersForMerchant.delete(key);
-    console.log(`[Terminal] Entregando voucher a comercio ${req.params.merchantAddress}`);
+  const reqAddress = (req.params.merchantAddress || '').toLowerCase();
+
+  // 1. Direct match by exact merchant address
+  if (pendingVouchersForMerchant.has(reqAddress)) {
+    const voucher = pendingVouchersForMerchant.get(reqAddress);
+    pendingVouchersForMerchant.delete(reqAddress);
+    console.log(`[Terminal] Entregando voucher directo a comercio ${req.params.merchantAddress}`);
     return res.json({ hasVoucher: true, voucher });
   }
+
+  // 2. Fallback cross-match via latestTerminalVoucher (within last 60 seconds)
+  if (latestTerminalVoucher && (Date.now() - latestTerminalVoucher.createdAt < 60000)) {
+    const v = latestTerminalVoucher.voucher;
+    const target = latestTerminalVoucher.merchantAddress;
+    const activeMerch = activeTerminalSession?.merchantAddress;
+
+    // Match if targeted to this merchant, OR relayer fallback address, OR this merchant is active terminal, OR single merchant polling
+    if (
+      !target ||
+      target === reqAddress ||
+      target === '0x73585ded2e86d584eaf2fcb8e62a7803910c146b' ||
+      activeMerch === reqAddress ||
+      !activeMerch
+    ) {
+      console.log(`[Terminal] Entregando latest voucher a comercio ${req.params.merchantAddress} (target original era ${target || 'auto'})`);
+      latestTerminalVoucher = null; // consume once
+
+      // Ensure the payload payee is mapped directly to this merchant so settleTokenBatch deposits to this merchant!
+      const targetPayload = v.payload || v.tx?.payload;
+      if (targetPayload) {
+        if (!targetPayload.payee || targetPayload.payee.toLowerCase() === '0x73585ded2e86d584eaf2fcb8e62a7803910c146b') {
+          targetPayload.payee = req.params.merchantAddress;
+        }
+      }
+
+      return res.json({ hasVoucher: true, voucher: v });
+    }
+  }
+
   res.json({ hasVoucher: false });
 });
 

@@ -86,6 +86,7 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
   const [isNfcWriting, setIsNfcWriting] = useState(false);
   const [confirmationModal, setConfirmationModal] = useState(null);
   const nfcReceiverHandleRef = useRef(null);
+  const processedVoucherHashesRef = useRef(new Set());
 
   // Activate NFC listening and POS session broadcast automatically when entering Receive mode
   useEffect(() => {
@@ -699,6 +700,15 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
       } 
       // Case 2: Merchant scanned a Signed Payment Payload from Payer
       else if (data.type === 'AVALANCHE_PAYMENT_PAYLOAD' || data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash || (data.payload && data.payerSignature)) {
+        const txUniqueId = data.txHash || data.tx?.txHash || (data.payload?.nonce ? String(data.payload.nonce) : null) || (data.tx?.payload?.nonce ? String(data.tx.payload.nonce) : null);
+        if (txUniqueId && processedVoucherHashesRef.current.has(txUniqueId)) {
+          console.log('[Terminal] Voucher ya procesado previamente:', txUniqueId);
+          return;
+        }
+        if (txUniqueId) {
+          processedVoucherHashesRef.current.add(txUniqueId);
+        }
+
         setHandshakeStep(3);
         const payload = data.tx || data;
         const finalized = await receiveAndCounterSign(payload, 'device_b');
@@ -738,15 +748,45 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
         }, 2500);
       }
       // Case 3: Physical NFC Tap (Phone-to-phone contact, physical NFC tag, or hardware tap)
-      else if (data.type === 'POLLAR_NFC_TAG' || data.tagId || transferChannel === 'nfc') {
+      else if (data.type === 'POLLAR_NFC_TAG' || data.type === 'AVALANCHE_NFC_TAG' || data.tagId || transferChannel === 'nfc') {
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
         if (mode === 'receive') {
-          // Terminal de cobro tocada físicamente por el celular del cliente: cobra de corrido
+          // Terminal de cobro (Merchant) tocada físicamente por el celular del cliente: cobra de corrido
           setFeedback({
             type: 'success',
-            message: `¡Contacto NFC detectado! Esperando voucher firmado del cliente por $${receiveAmount}...`
+            message: `¡Contacto NFC detectado! Recibiendo pago firmado de $${receiveAmount} USDC...`
           });
+
+          // Rapid active poll to fetch the signed voucher from the customer
+          const pollStartTime = Date.now();
+          const maxWaitMs = 8000;
+          let voucherHandled = false;
+
+          while (Date.now() - pollStartTime < maxWaitMs && !voucherHandled) {
+            try {
+              const relayerUrl = getRelayerUrl();
+              const res = await fetch(`${relayerUrl}/api/terminal/poll-voucher/${currentAccount.publicKey}`, {
+                headers: { 'ngrok-skip-browser-warning': 'true' }
+              });
+              if (res.ok) {
+                const pollData = await res.json();
+                if (pollData.hasVoucher && pollData.voucher && !voucherHandled) {
+                  voucherHandled = true;
+                  console.log('[Merchant NFC] ¡Voucher recibido exitosamente tras toque NFC!');
+                  await handleScannedData(pollData.voucher);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn('[Merchant NFC] Polling attempt notice:', e.message);
+            }
+            await new Promise(r => setTimeout(r, 250));
+          }
+
+          if (!voucherHandled) {
+            console.warn('[Merchant NFC] Polling de voucher concluyó tras contacto NFC.');
+          }
         } else {
           // Celular del pagador tocando la terminal de cobro: genera y firma el pago offline
           let targetPayee = payeeAddress;
@@ -756,24 +796,28 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
           // Query active terminal from relayer backend if payee not explicitly set
           try {
             const relayerUrl = getRelayerUrl();
-            const termRes = await fetch(`${relayerUrl}/api/terminal/active`, {
+            const termRes = await fetch(`${relayerUrl}/api/terminal/active?callerAddress=${currentAccount.publicKey}`, {
               headers: { 'ngrok-skip-browser-warning': 'true' }
             });
             if (termRes.ok) {
               const termData = await termRes.json();
               if (termData.active && termData.terminal) {
-                targetPayee = termData.terminal.originalAddress || termData.terminal.merchantAddress;
-                amt = termData.terminal.amount || amt;
-                memo = termData.terminal.memo || memo;
-                console.log(`[Payer] Terminal POS activa detectada: ${targetPayee}, monto: $${amt} (${memo})`);
+                const cand = termData.terminal.originalAddress || termData.terminal.merchantAddress;
+                // Only accept if candidate is NOT the payer's own address!
+                if (cand && cand.toLowerCase() !== currentAccount.publicKey.toLowerCase()) {
+                  targetPayee = cand;
+                  amt = termData.terminal.amount || amt;
+                  memo = termData.terminal.memo || memo;
+                  console.log(`[Payer NFC] Terminal POS activa detectada: ${targetPayee}, monto: $${amt} (${memo})`);
+                }
               }
             }
           } catch (e) {
-            console.warn('[Payer] Notice querying active terminal:', e.message);
+            console.warn('[Payer NFC] Notice querying active terminal:', e.message);
           }
 
-          if (!targetPayee) {
-            targetPayee = isEvm ? '0x73585ded2E86D584eaf2fcB8e62A7803910c146B' : 'GBBD47IF6LWK7P7MDEV264JPXX34WNVIYTVUKEBHNO7Z6BTZTG6WEZHT';
+          if (!targetPayee || targetPayee.toLowerCase() === currentAccount.publicKey.toLowerCase()) {
+            targetPayee = '0x73585ded2E86D584eaf2fcB8e62A7803910c146B';
           }
 
           try {
@@ -783,15 +827,19 @@ export default function P2PPaymentTerminal({ initialMode = 'pay', onNavigate }) 
             // Forward voucher to the merchant via relayer backend
             try {
               const relayerUrl = getRelayerUrl();
-              fetch(`${relayerUrl}/api/terminal/voucher`, {
+              await fetch(`${relayerUrl}/api/terminal/voucher`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                 body: JSON.stringify({
                   merchantAddress: targetPayee,
-                  voucher: { type: 'POLLAR_PAYMENT_PAYLOAD', tx }
+                  payerAddress: currentAccount.publicKey,
+                  voucher: { type: 'AVALANCHE_PAYMENT_PAYLOAD', tx }
                 })
-              }).catch(() => {});
-            } catch (e) {}
+              });
+              console.log('[Payer NFC] Voucher transmitido al relayer para comercio:', targetPayee);
+            } catch (e) {
+              console.warn('[Payer NFC] Error subiendo voucher:', e.message);
+            }
 
             // Trigger Confirmation Animation Modal for Payer
             setConfirmationModal({
