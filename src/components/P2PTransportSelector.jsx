@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  QrCode, Bluetooth, Wifi, Nfc, AlertCircle, Loader2, CheckCircle2, X, Copy, Check, ArrowRight
+  QrCode, Bluetooth, Wifi, Nfc, AlertCircle, Loader2, CheckCircle2, X, Copy, Check, Send, Download
 } from 'lucide-react';
 import { getBluetoothService } from '../services/BluetoothService';
 import { getNFCService } from '../services/NFCService';
@@ -11,6 +11,7 @@ export default function P2PTransportSelector({ onClose, payload, onPayloadCopied
   const [checking, setChecking] = useState(true);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   useEffect(() => { checkAvailableTransports(); }, []);
 
@@ -33,7 +34,7 @@ export default function P2PTransportSelector({ onClose, payload, onPayloadCopied
     try {
       const wifi = getWifiDirectService();
       const wifiAvail = await wifi.initialize();
-      if (wifiAvail) transports.push({ id: 'wifi', label: 'WiFi Local', icon: Wifi, color: '#f59e0b', available: true });
+      if (wifiAvail) transports.push({ id: 'wifi', label: 'WiFi Direct', icon: Wifi, color: '#f59e0b', available: true });
     } catch {}
 
     setAvailableTransports(transports);
@@ -52,34 +53,72 @@ export default function P2PTransportSelector({ onClose, payload, onPayloadCopied
       return;
     }
 
+    setIsTransferring(true);
+
     try {
       if (transportId === 'bluetooth') {
-        setStatus('Buscando dispositivos Bluetooth...');
-        const bt = getBluetoothService();
-        const device = await bt.startScan((peer) => {
-          setStatus(`Dispositivo encontrado: ${peer.name || peer.id}`);
-        });
-        if (!device) setStatus('No se encontraron dispositivos. Usa QR como alternativa.');
-      } else if (transportId === 'wifi') {
-        setStatus('Compartiendo por red local...');
-        const wifi = getWifiDirectService();
-        const ip = await wifi.getLocalIP();
-        if (ip) setStatus(`Tu IP local: ${ip} — Comparte esta dirección al otro dispositivo.`);
-        else setStatus('No se pudo obtener IP local. Usa QR como alternativa.');
+        await handleBluetoothSend();
       } else if (transportId === 'nfc') {
-        setStatus('NFC requiere Android con soporte Web NFC. Usa QR como alternativa.');
+        await handleNFCSend();
+      } else if (transportId === 'wifi') {
+        await handleWifiSend();
       }
     } catch (err) {
       setStatus('Error: ' + err.message);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleBluetoothSend = async () => {
+    const bt = getBluetoothService();
+    setStatus('Buscando dispositivos Bluetooth...');
+    
+    const device = await bt.startScan((peer) => {
+      setStatus(`Dispositivo encontrado: ${peer.name || peer.id}`);
+    });
+    
+    if (!device) {
+      setStatus('No se encontraron dispositivos. Asegúrate de que el otro dispositivo esté en modo visible.');
+      return;
+    }
+
+    setStatus('Conectando...');
+    await bt.sendPayload(payload);
+    setStatus('✅ Payload enviado exitosasmente por Bluetooth');
+    setTimeout(() => setStatus(''), 3000);
+  };
+
+  const handleNFCSend = async () => {
+    const nfc = getNFCService();
+    setStatus('Acerca los dispositivos para transferir por NFC...');
+    
+    try {
+      await nfc.write(payload);
+      setStatus('✅ Payload enviado por NFC');
+    } catch (err) {
+      setStatus('Error NFC: ' + err.message);
+    }
+    setTimeout(() => setStatus(''), 3000);
+  };
+
+  const handleWifiSend = async () => {
+    const wifi = getWifiDirectService();
+    setStatus('Obteniendo IP local...');
+    
+    const ip = await wifi.getLocalIP();
+    if (ip) {
+      setStatus(`Tu IP local: ${ip} — Comparte esta dirección al otro dispositivo.`);
+    } else {
+      setStatus('No se pudo obtener IP local.');
     }
   };
 
   const handleCopy = () => {
     if (payload) {
-      const json = JSON.stringify(payload);
-      navigator.clipboard.writeText(json);
+      navigator.clipboard.writeText(JSON.stringify(payload));
       setCopied(true);
-      if (onPayloadCopied) onPayloadCopied(json);
+      if (onPayloadCopied) onPayloadCopied(JSON.stringify(payload));
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -100,6 +139,7 @@ export default function P2PTransportSelector({ onClose, payload, onPayloadCopied
 
       {status && (
         <div style={{ padding: 10, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', fontSize: 12, marginBottom: 12 }}>
+          {isTransferring && <Loader2 size={12} style={{ display: 'inline', marginRight: 6, animation: 'spin 1s linear infinite' }} />}
           {status}
         </div>
       )}
@@ -113,11 +153,12 @@ export default function P2PTransportSelector({ onClose, payload, onPayloadCopied
           {availableTransports.map((t) => {
             const Icon = t.icon;
             return (
-              <button key={t.id} onClick={() => handleSelect(t.id)} style={{
+              <button key={t.id} onClick={() => handleSelect(t.id)} disabled={isTransferring} style={{
                 padding: '14px 12px', borderRadius: 16,
                 border: `1.5px solid ${t.color}22`, background: `${t.color}08`,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                 cursor: 'pointer', transition: 'all 0.15s ease',
+                opacity: isTransferring ? 0.5 : 1
               }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 10,

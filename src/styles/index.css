@@ -1,48 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ==========================================================================
-   POLLAR MODERN eWALLET DESIGN SYSTEM (2026 EDITION)
+   POLLAR DESIGN SYSTEM — Professional Wallet Interface
    ========================================================================== */
 
 :root {
-  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Pollar Official Brand Colors */
-  --pollar-blue: #0062FF;
-  --pollar-blue-dark: #004BD6;
-  --pollar-blue-hover: #0055EE;
-  --pollar-blue-light: #EEF5FF;
-  --pollar-blue-subtle: rgba(0, 98, 255, 0.08);
-  --pollar-gradient: linear-gradient(135deg, #0050EC 0%, #006AFF 55%, #0095FF 100%);
-  --pollar-gradient-merchant: linear-gradient(135deg, #059669 0%, #10B981 55%, #34D399 100%);
+  /* Brand Colors — Softer, less "startup" */
+  --pollar-blue: #2563EB;
+  --pollar-blue-dark: #1D4ED8;
+  --pollar-blue-hover: #1E40AF;
+  --pollar-blue-light: #EFF6FF;
+  --pollar-blue-subtle: rgba(37, 99, 235, 0.06);
+  --pollar-gradient: linear-gradient(135deg, #1E40AF 0%, #2563EB 100%);
+  --pollar-gradient-merchant: linear-gradient(135deg, #047857 0%, #059669 100%);
 
-  /* Neutrals */
-  --bg-app: #F4F6F9;
+  /* Neutrals — Slate base for professional look */
+  --bg-app: #F8FAFC;
   --bg-card: #FFFFFF;
-  --bg-card-muted: #F8FAFC;
+  --bg-card-muted: #F1F5F9;
   --bg-input: #FFFFFF;
-  --border-subtle: #E8EEF5;
-  --border-focus: #0062FF;
+  --border-subtle: #E2E8F0;
+  --border-subtle-hover: #CBD5E1;
 
   /* Typography */
   --text-main: #0F172A;
   --text-muted: #64748B;
   --text-light: #94A3B8;
 
-  /* Accents */
-  --color-emerald: #10B981;
+  /* Accents — More muted */
+  --color-emerald: #059669;
   --color-emerald-bg: #ECFDF5;
-  --color-amber: #F59E0B;
+  --color-amber: #D97706;
   --color-amber-bg: #FFFBEB;
-  --color-rose: #F43F5E;
-  --color-rose-bg: #FFF1F2;
+  --color-rose: #DC2626;
+  --color-rose-bg: #FEF2F2;
 
-  /* Shadows */
-  --shadow-card: 0 10px 30px -4px rgba(15, 23, 42, 0.05), 0 2px 8px -2px rgba(15, 23, 42, 0.02);
-  --shadow-card-hover: 0 16px 36px -4px rgba(15, 23, 42, 0.08);
-  --shadow-blue-glow: 0 12px 28px -4px rgba(0, 98, 255, 0.38);
-  --shadow-bottom-nav: 0 14px 40px -4px rgba(15, 23, 42, 0.12), 0 2px 10px rgba(0, 0, 0, 0.04);
+  /* Shadows — Subtle, less "glowy" */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+
+  /* Radius — More conservative */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
 }
 
 /* ==========================================================================
@@ -62,7 +69,7 @@ html, body {
   background-color: var(--bg-app);
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -91,31 +98,30 @@ button {
 }
 
 /* ==========================================================================
-   APP CONTAINER & LAYOUT
+   APP CONTAINER
    ========================================================================== */
 
 .pollar-app-shell {
   width: 100%;
-  max-width: 480px;
+  max-width: 420px;
   min-height: 100vh;
   background-color: #FFFFFF;
   display: flex;
   flex-direction: column;
   position: relative;
-  box-shadow: 0 0 50px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.04);
   margin: 0 auto;
 }
 
 .pollar-main-content {
   flex: 1;
-  padding: 20px 20px 140px 20px;
+  padding: 16px 16px 120px 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-
 
 /* ==========================================================================
    HEADER
@@ -127,9 +133,9 @@ button {
   z-index: 40;
   width: 100%;
   background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 14px 20px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -139,147 +145,135 @@ button {
 .pollar-user-pill {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .pollar-user-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: var(--pollar-gradient);
-  color: #FFFFFF;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  background: var(--pollar-blue-light);
+  color: var(--pollar-blue);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 16px;
-  box-shadow: 0 4px 12px rgba(0, 98, 255, 0.25);
+  font-weight: 700;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 .pollar-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pollar-status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .pollar-status-badge.online {
   background: var(--color-emerald-bg);
   color: var(--color-emerald);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(5, 150, 105, 0.2);
 }
 
 .pollar-status-badge.offline {
   background: var(--color-rose-bg);
   color: var(--color-rose);
-  border: 1px solid rgba(244, 63, 94, 0.2);
+  border: 1px solid rgba(220, 38, 38, 0.2);
 }
 
 .pollar-icon-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
   background: var(--bg-card-muted);
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border-subtle);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .pollar-icon-btn:hover {
-  background: #E2E8F0;
+  background: var(--border-subtle);
   color: var(--text-main);
 }
 
 /* ==========================================================================
-   ROLE SWITCHER (PAGADOR vs COMERCIO)
+   ROLE SWITCHER
    ========================================================================== */
 
 .pollar-role-bar {
-  padding: 12px 20px 0 20px;
+  padding: 12px 16px 0 16px;
 }
 
 .pollar-role-container {
   display: flex;
-  background: #EBF0F7;
-  padding: 4px;
-  border-radius: 16px;
-  gap: 4px;
+  background: var(--bg-card-muted);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  gap: 3px;
+  border: 1px solid var(--border-subtle);
 }
 
 .pollar-role-tab {
   flex: 1;
-  padding: 9px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--text-muted);
   background: transparent;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s ease;
 }
 
 .pollar-role-tab.active-payer {
   background: #FFFFFF;
   color: var(--pollar-blue);
-  box-shadow: 0 2px 8px rgba(0, 98, 255, 0.15);
+  box-shadow: var(--shadow-sm);
 }
 
 .pollar-role-tab.active-merchant {
   background: #FFFFFF;
   color: var(--color-emerald);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ==========================================================================
-   MAIN BALANCE DIGITAL CARD
+   BALANCE CARD
    ========================================================================== */
 
 .pollar-balance-card {
   width: 100%;
-  border-radius: 28px;
-  padding: 26px 24px;
+  border-radius: var(--radius-xl);
+  padding: 20px;
   color: #FFFFFF;
-  background: var(--pollar-gradient);
-  box-shadow: var(--shadow-blue-glow);
+  background: var(--pollar-blue);
+  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .pollar-balance-card.merchant {
-  background: var(--pollar-gradient-merchant);
-  box-shadow: 0 12px 28px -4px rgba(16, 185, 129, 0.38);
-}
-
-.pollar-card-ambient-circle {
-  position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 70%);
-  pointer-events: none;
+  background: var(--color-emerald);
 }
 
 .pollar-card-top {
@@ -289,50 +283,49 @@ button {
 }
 
 .pollar-card-tag {
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
 }
 
 .pollar-card-refresh {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.15);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .pollar-card-refresh:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .pollar-balance-amount {
-  font-size: 42px;
-  font-weight: 900;
+  font-size: 32px;
+  font-weight: 700;
   line-height: 1.1;
-  letter-spacing: -1px;
+  letter-spacing: -0.5px;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 
 .pollar-balance-asset {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   opacity: 0.9;
 }
 
 .pollar-card-subline {
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.85;
   font-family: var(--font-mono);
   display: flex;
@@ -342,65 +335,21 @@ button {
 
 .pollar-card-address {
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 8px 12px;
-  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: 10px;
   font-family: var(--font-mono);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .pollar-card-address:hover {
   background: rgba(0, 0, 0, 0.3);
-}
-
-/* 4 Action Buttons */
-.pollar-card-actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  padding-top: 4px;
-}
-
-.pollar-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  color: #FFFFFF;
-}
-
-.pollar-action-icon-circle {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.pollar-action-btn:hover .pollar-action-icon-circle {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
-
-.pollar-action-btn:active .pollar-action-icon-circle {
-  transform: translateY(0);
-}
-
-.pollar-action-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: #FFFFFF;
 }
 
 /* ==========================================================================
@@ -410,12 +359,12 @@ button {
 .pollar-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 24px;
-  padding: 22px;
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .pollar-panel-header {
@@ -425,240 +374,12 @@ button {
 }
 
 .pollar-panel-title {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-main);
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* ==========================================================================
-   HORIZONTAL RECENT TRANSFERS ROW
-   ========================================================================== */
-
-.pollar-transfers-scroll {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  overflow-x: auto;
-  padding: 4px 2px 8px 2px;
-}
-
-.pollar-transfer-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 6px;
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.pollar-transfer-circle {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  border: 2px solid transparent;
-}
-
-.pollar-transfer-circle.add {
-  border: 2px dashed #CBD5E1;
-  background: #FFFFFF;
-  color: var(--text-muted);
-}
-
-.pollar-transfer-circle.add:hover {
-  border-color: var(--pollar-blue);
-  color: var(--pollar-blue);
-}
-
-.pollar-transfer-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-/* ==========================================================================
-   TRANSACTIONS LIST
-   ========================================================================== */
-
-.pollar-tx-item {
-  background: #FFFFFF;
-  border: 1px solid var(--border-subtle);
-  border-radius: 18px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02);
-  transition: all 0.2s ease;
-}
-
-.pollar-tx-item:hover {
-  border-color: #CBD5E1;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
-}
-
-.pollar-tx-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.pollar-tx-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.pollar-tx-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.pollar-tx-meta {
-  font-size: 11px;
-  color: var(--text-light);
-  font-family: var(--font-mono);
-}
-
-.pollar-tx-amount-out {
-  font-size: 15px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  color: var(--text-main);
-  text-align: right;
-}
-
-.pollar-tx-amount-in {
-  font-size: 15px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  color: var(--color-emerald);
-  text-align: right;
-}
-
-/* ==========================================================================
-   INPUTS & BUTTONS
-   ========================================================================== */
-
-.pollar-input {
-  width: 100%;
-  height: 52px;
-  background: var(--bg-input);
-  border: 1.5px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 0 16px;
-  font-size: 15px;
-  color: var(--text-main);
-  transition: all 0.2s ease;
-}
-
-.pollar-input:focus {
-  border-color: var(--pollar-blue);
-  box-shadow: 0 0 0 3px rgba(0, 98, 255, 0.12);
-}
-
-.pollar-btn-primary {
-  width: 100%;
-  height: 52px;
-  background: var(--pollar-gradient);
-  color: #FFFFFF;
-  font-size: 15px;
-  font-weight: 800;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 8px 20px rgba(0, 98, 255, 0.32);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.pollar-btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(0, 98, 255, 0.42);
-}
-
-.pollar-btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.pollar-btn-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.pollar-btn-emerald {
-  width: 100%;
-  height: 52px;
-  background: var(--pollar-gradient-merchant);
-  color: #FFFFFF;
-  font-size: 15px;
-  font-weight: 800;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.32);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.pollar-btn-emerald:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.42);
-}
-
-.pollar-btn-secondary {
-  width: 100%;
-  height: 50px;
-  background: #F1F5F9;
-  color: var(--text-main);
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
-}
-
-.pollar-btn-secondary:hover {
-  background: #E2E8F0;
-}
-
-.pollar-btn-outline-blue {
-  width: 100%;
-  height: 50px;
-  background: var(--pollar-blue-light);
-  border: 1.5px solid rgba(0, 98, 255, 0.25);
-  color: var(--pollar-blue);
-  font-size: 14px;
-  font-weight: 800;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
-}
-
-.pollar-btn-outline-blue:hover {
-  background: #E0EDFF;
-  border-color: var(--pollar-blue);
 }
 
 /* ==========================================================================
@@ -667,136 +388,207 @@ button {
 
 .pollar-bottom-nav-bar {
   position: fixed;
-  bottom: 12px;
+  bottom: 0;
   left: 0;
   right: 0;
-  z-index: 50;
+  padding: 8px 16px 16px 16px;
   display: flex;
   justify-content: center;
-  padding: 0 16px;
-  pointer-events: none;
 }
 
 .pollar-bottom-nav-pill {
-  width: 100%;
-  max-width: 440px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 26px;
-  padding: 6px;
-  box-shadow: var(--shadow-bottom-nav);
   display: flex;
-  align-items: center;
-  justify-content: space-around;
-  pointer-events: auto;
+  background: #FFFFFF;
+  padding: 4px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-subtle);
+  gap: 4px;
 }
 
 .pollar-nav-tab {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 18px;
+  gap: 2px;
+  padding: 8px 16px;
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
   background: transparent;
-  color: var(--text-light);
+  transition: all 0.15s ease;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .pollar-nav-tab.active {
   color: var(--pollar-blue);
-}
-
-.pollar-nav-tab.active.sync-tab {
-  color: var(--color-emerald);
+  background: var(--pollar-blue-light);
 }
 
 .pollar-nav-tab-icon-wrap {
-  padding: 6px 14px;
-  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.pollar-nav-tab.active .pollar-nav-tab-icon-wrap {
-  background: var(--pollar-blue-light);
-  transform: translateY(-2px);
-}
-
-.pollar-nav-tab.active.sync-tab .pollar-nav-tab-icon-wrap {
-  background: var(--color-emerald-bg);
 }
 
 .pollar-nav-tab-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .pollar-nav-badge {
   position: absolute;
-  top: 4px;
-  right: 14px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 9px;
-  background: var(--color-amber);
+  top: 2px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--color-rose);
   color: #FFFFFF;
-  font-size: 10px;
-  font-weight: 900;
+  font-size: 9px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 /* ==========================================================================
-   MODALS & DRAWERS
+   BUTTONS
+   ========================================================================== */
+
+.pollar-btn-primary {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--pollar-blue);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.pollar-btn-primary:hover {
+  background: var(--pollar-blue-hover);
+}
+
+.pollar-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.pollar-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pollar-btn-secondary {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card-muted);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.pollar-btn-secondary:hover {
+  background: var(--border-subtle);
+}
+
+.pollar-btn-outline-blue {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--pollar-blue);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--pollar-blue);
+  transition: all 0.15s ease;
+}
+
+.pollar-btn-outline-blue:hover {
+  background: var(--pollar-blue-light);
+}
+
+/* ==========================================================================
+   INPUTS
+   ========================================================================== */
+
+.pollar-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  font-size: 13px;
+  color: var(--text-main);
+  transition: all 0.15s ease;
+}
+
+.pollar-input:focus {
+  border-color: var(--pollar-blue);
+  box-shadow: 0 0 0 3px var(--pollar-blue-subtle);
+}
+
+.pollar-input::placeholder {
+  color: var(--text-light);
+}
+
+/* ==========================================================================
+   MODAL OVERLAY
    ========================================================================== */
 
 .pollar-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 100;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0;
-}
-
-@media (min-width: 640px) {
-  .pollar-modal-overlay {
-    align-items: center;
-    padding: 20px;
-  }
 }
 
 .pollar-modal-sheet {
   width: 100%;
-  max-width: 440px;
+  max-width: 420px;
   background: #FFFFFF;
-  border-radius: 32px 32px 0 0;
-  padding: 28px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 20px 16px 32px 16px;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: slide-up 0.2s ease;
 }
 
-@media (min-width: 640px) {
-  .pollar-modal-sheet {
-    border-radius: 32px;
-  }
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
+
+/* ==========================================================================
+   ANIMATIONS
+   ========================================================================== */
 
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

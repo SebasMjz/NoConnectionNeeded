@@ -30,13 +30,12 @@ test('P2: Settings opens from header gear icon', async ({ page }) => {
 
 test('P2: Settings shows user name and email', async ({ page }) => {
   await clearAppState(page);
-  await page.getByRole('button', { name: /Pagador/i }).click();
+  await page.getByRole('button', { name: /⚡ Pagador/i }).click();
   await expect(page.locator('text=Bóveda').first()).toBeVisible({ timeout: 5000 });
 
   await page.locator('[title="Configuración y Perfil"]').click();
   await expect(page.locator('text=Cuenta')).toBeVisible({ timeout: 3000 });
-  // Should show preset user info
-  await expect(page.locator('text=Pagador Demo').or(page.locator('text=Comercio POS Demo'))).toBeVisible();
+  await expect(page.locator('text=demo.pagador@pollar.io')).toBeVisible();
 });
 
 test('P2: Settings has biometric toggle row', async ({ page }) => {

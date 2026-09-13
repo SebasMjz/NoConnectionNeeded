@@ -1,12 +1,8 @@
 /**
- * NFCService — Web NFC API wrapper (Chrome 89+ on Android).
- * No plugins needed - uses the browser's built-in NFC support.
+ * NFCService — Transferencia real de payloads entre dispositivos.
+ * Usa Web NFC API (NDEFReader/NDEFWriter) disponible en Chrome 89+ en Android.
+ * Permite leer y escribir tags NFC con payloads P2P.
  */
-
-let hasWebNFC = false;
-try {
-  hasWebNFC = typeof window !== 'undefined' && 'NDEFReader' in window;
-} catch {}
 
 const POLLAR_MIME_TYPE = 'application/vnd.pollar-p2p';
 
@@ -14,82 +10,133 @@ export class NFCService {
   constructor() {
     this.isAvailable = false;
     this.onPayloadReceived = null;
+    this.abortController = null;
   }
 
   async initialize() {
-    if (hasWebNFC) {
+    if (typeof window !== 'undefined' && 'NDEFReader' in window) {
       this.isAvailable = true;
-      console.log('[NFC] Web NFC API available (Chrome 89+)');
+      console.log('[NFC] Web NFC API available');
       return true;
     }
-
-    // Web NFC not available - check if we're on mobile
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      // Many Android devices have NFC but Chrome may not expose Web NFC
-      // Still report available - we'll handle errors gracefully
-      this.isAvailable = false;
-    }
-
-    console.warn('[NFC] Web NFC API not available');
     this.isAvailable = false;
     return false;
   }
 
   static isNFCSupported() {
-    return hasWebNFC;
+    return typeof window !== 'undefined' && 'NDEFReader' in window;
   }
 
+  /**
+   * Leer un tag NFC que contenga un payload Pollar
+   * @returns {Promise<object>} payload parseado
+   */
   async read() {
-    if (!this.isAvailable) {
-      throw new Error('NFC requiere Android con soporte Web NFC. Usa Chrome 89+. Usa QR como alternativa.');
-    }
+    if (!this.isAvailable) throw new Error('NFC no disponible en este navegador. Usa Chrome 89+ en Android.');
 
     const reader = new NDEFReader();
-    await reader.scan();
+    this.abortController = new AbortController();
+    
+    try {
+      await reader.scan({ signal: this.abortController.signal });
+      
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.abortController.abort();
+          resolve(null);
+        }, 30000);
 
-    return new Promise((resolve, reject) => {
-      const onReading = (event) => {
+        reader.addEventListener('reading', (event) => {
+          clearTimeout(timeout);
+          for (const record of event.message.records) {
+            if (record.mediaType === POLLAR_MIME_TYPE || record.recordType === 'text') {
+              const decoder = new TextDecoder();
+              try {
+                resolve(JSON.parse(decoder.decode(record.data)));
+              } catch {
+                resolve(null);
+              }
+              return;
+            }
+          }
+          resolve(null);
+        });
+
+        reader.addEventListener('readingerror', () => {
+          clearTimeout(timeout);
+          reject(new Error('Error al leer tag NFC'));
+        });
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') return null;
+      throw new Error('Error al escanear NFC: ' + (err.message || 'error'));
+    }
+  }
+
+  /**
+   * Escribir un payload en un tag NFC o emular tag para otro dispositivo
+   * @param {object} payload - datos a escribir
+   */
+  async write(payload) {
+    if (!this.isAvailable) throw new Error('NFC no disponible en este navegador. Usa Chrome 89+ en Android.');
+
+    const writer = new NDEFWriter();
+    const data = JSON.stringify(payload);
+    
+    try {
+      await writer.write({
+        records: [{
+          recordType: 'mime',
+          mediaType: POLLAR_MIME_TYPE,
+          data: new TextEncoder().encode(data)
+        }]
+      });
+      return true;
+    } catch (err) {
+      throw new Error('Error al escribir tag NFC: ' + (err.message || 'error'));
+    }
+  }
+
+  /**
+   * Iniciar escucha continua de tags NFC
+   * @param {function} onPayload callback cuando se detecta un payload
+   */
+  async startListening(onPayload) {
+    if (!this.isAvailable) throw new Error('NFC no disponible');
+
+    const reader = new NDEFReader();
+    this.abortController = new AbortController();
+    
+    try {
+      await reader.scan({ signal: this.abortController.signal });
+      
+      reader.addEventListener('reading', (event) => {
         for (const record of event.message.records) {
           if (record.mediaType === POLLAR_MIME_TYPE || record.recordType === 'text') {
             const decoder = new TextDecoder();
-            try { resolve(JSON.parse(decoder.decode(record.data))); } catch { resolve(null); }
-            return;
+            try {
+              const payload = JSON.parse(decoder.decode(record.data));
+              if (onPayload) onPayload(payload);
+            } catch {}
           }
         }
-        resolve(null);
-      };
-      const onError = () => reject(new Error('NFC read error'));
-
-      reader.addEventListener('reading', onReading);
-      reader.addEventListener('readingerror', onError);
-
-      // Timeout after 30s
-      setTimeout(() => {
-        reader.removeEventListener('reading', onReading);
-        reader.removeEventListener('readingerror', onError);
-        reject(new Error('NFC read timeout'));
-      }, 30000);
-    });
+      });
+      
+      return true;
+    } catch (err) {
+      throw new Error('Error al iniciar escucha NFC: ' + (err.message || 'error'));
+    }
   }
 
-  async write(payload) {
-    if (!this.isAvailable) {
-      throw new Error('NFC requiere Android con soporte Web NFC. Usa Chrome 89+. Usa QR como alternativa.');
+  async stopListening() {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
     }
-
-    const writer = new NDEFWriter();
-    await writer.write({
-      records: [{
-        recordType: 'mime',
-        mediaType: POLLAR_MIME_TYPE,
-        data: new TextEncoder().encode(JSON.stringify(payload))
-      }]
-    });
-    return true;
   }
 
   async cleanup() {
+    await this.stopListening();
     this.onPayloadReceived = null;
   }
 }

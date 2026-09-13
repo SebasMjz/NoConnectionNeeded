@@ -1,20 +1,4 @@
-/**
- * BarcodeService — QR scanner usando html5-qrcode.
- * Import dinámico para evitar problemas de bundle.
- */
-
-let Html5Qrcode = null;
-
-async function loadHtml5Qrcode() {
-  if (Html5Qrcode) return Html5Qrcode;
-  try {
-    const mod = await import('html5-qrcode');
-    Html5Qrcode = mod.Html5Qrcode || mod.default?.Html5Qrcode;
-    return Html5Qrcode;
-  } catch {
-    return null;
-  }
-}
+import { Html5Qrcode } from 'html5-qrcode';
 
 export class BarcodeService {
   constructor() {
@@ -23,8 +7,7 @@ export class BarcodeService {
   }
 
   async isAvailable() {
-    const html5 = await loadHtml5Qrcode();
-    return !!html5 && typeof window !== 'undefined';
+    return typeof window !== 'undefined' && !!navigator.mediaDevices;
   }
 
   async requestPermission() {
@@ -42,11 +25,6 @@ export class BarcodeService {
 
   async scan() {
     if (typeof window === 'undefined' || !navigator.mediaDevices) {
-      throw new Error('Escáner no disponible en este dispositivo');
-    }
-
-    const Html5QrcodeClass = await loadHtml5Qrcode();
-    if (!Html5QrcodeClass) {
       throw new Error('Escáner no disponible en este dispositivo');
     }
 
@@ -98,7 +76,7 @@ export class BarcodeService {
       };
 
       try {
-        this.scanner = new Html5QrcodeClass('pollar-qr-reader');
+        this.scanner = new Html5Qrcode('pollar-qr-reader');
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
         this.scanner.start(
