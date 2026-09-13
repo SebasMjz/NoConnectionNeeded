@@ -10,18 +10,7 @@
     <title>Pollar • Offline Stellar P2P Wallet (Go Engine)</title>
     <!-- Load Go WebAssembly runtime support -->
     <script src="/wasm_exec.js"></script>
-    <!-- Service Worker for offline support (cache-busting: v2) -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then((reg) => {
-            console.log('[Pollar PWA] Service Worker v2 registrado:', reg.scope);
-          }).catch((err) => {
-            console.warn('[Pollar PWA] Fallo de registro de Service Worker:', err);
-          });
-        });
-      }
-    </script>
+    <!-- Service Worker disabled for Android WebView compatibility -->
   </head>
   <body>
     <div id="root"></div>

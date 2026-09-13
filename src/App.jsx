@@ -232,10 +232,14 @@ function AppContent() {
   );
 }
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 export default function App() {
   return (
-    <WalletProvider>
-      <AppContent />
-    </WalletProvider>
+    <ErrorBoundary>
+      <WalletProvider>
+        <AppContent />
+      </WalletProvider>
+    </ErrorBoundary>
   );
 }
