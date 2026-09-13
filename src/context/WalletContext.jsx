@@ -66,7 +66,7 @@ export function WalletProvider({ children }) {
     localStorage.setItem(PENDING_TX_KEY, JSON.stringify(pendingTx));
   }, [pendingTx]);
 
-  // Initialize provider
+  // Initialize provider and auto-connect saved wallet
   useEffect(() => {
     const initProvider = async () => {
       try {
@@ -78,6 +78,30 @@ export function WalletProvider({ children }) {
         setUsdcContract(usdc);
         setVaultContract(vault);
         setForwarderContract(forwarder);
+
+        // Auto-connect saved wallet after provider is ready
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const w = JSON.parse(saved);
+            const s = new ethers.Wallet(w.privateKey, prov);
+            const address = await s.getAddress();
+            setSigner(s);
+            setWallet({ address, privateKey: w.privateKey });
+            const usdcS = new ethers.Contract(HSK_TESTNET.contracts.usdc, ERC20_ABI, s);
+            const vaultS = new ethers.Contract(HSK_TESTNET.contracts.vault, VAULT_ABI, s);
+            const forwarderS = new ethers.Contract(HSK_TESTNET.contracts.forwarder, FORWARDER_ABI, s);
+            setUsdcContract(usdcS);
+            setVaultContract(vaultS);
+            setForwarderContract(forwarderS);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ address, privateKey: w.privateKey }));
+            await refreshBalances(address);
+            setCurrentUser({ address, name: `${address.slice(0,6)}...${address.slice(-4)}` });
+            console.log('[Wallet] Auto-connected:', address);
+          }
+        } catch (e) {
+          console.error('[Wallet] Auto-connect error:', e);
+        }
       } catch (e) {
         console.error('[Wallet] Init error:', e);
       }
@@ -85,20 +109,27 @@ export function WalletProvider({ children }) {
     initProvider();
   }, []);
 
-  // Load saved wallet
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const w = JSON.parse(saved);
-        connectWithPrivateKey(w.privateKey);
-      }
-    } catch (e) {}
-  }, []);
-
-  // Connect with private key
+  // Connect with private key (called from UI)
   const connectWithPrivateKey = useCallback(async (privateKey) => {
-    if (!provider) return;
+    if (!provider) {
+      // Fallback: create new provider if not initialized
+      const prov = new ethers.JsonRpcProvider(HSK_TESTNET.rpcUrl, HSK_TESTNET.chainId);
+      setProvider(prov);
+      const s = new ethers.Wallet(privateKey, prov);
+      const address = await s.getAddress();
+      setSigner(s);
+      setWallet({ address, privateKey });
+      const usdc = new ethers.Contract(HSK_TESTNET.contracts.usdc, ERC20_ABI, s);
+      const vault = new ethers.Contract(HSK_TESTNET.contracts.vault, VAULT_ABI, s);
+      const forwarder = new ethers.Contract(HSK_TESTNET.contracts.forwarder, FORWARDER_ABI, s);
+      setUsdcContract(usdc);
+      setVaultContract(vault);
+      setForwarderContract(forwarder);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ address, privateKey }));
+      await refreshBalances(address);
+      setCurrentUser({ address, name: `${address.slice(0,6)}...${address.slice(-4)}` });
+      return;
+    }
     setIsConnecting(true);
     try {
       const s = new ethers.Wallet(privateKey, provider);
