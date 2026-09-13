@@ -173,18 +173,54 @@ button {
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
+  user-select: none;
 }
 
 .pollar-status-badge.online {
   background: var(--color-emerald-bg);
   color: var(--color-emerald);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1.5px solid rgba(16, 185, 129, 0.3);
 }
 
 .pollar-status-badge.offline {
   background: var(--color-rose-bg);
   color: var(--color-rose);
-  border: 1px solid rgba(244, 63, 94, 0.2);
+  border: 1.5px solid rgba(244, 63, 94, 0.3);
+}
+
+.pollar-status-badge.simulated {
+  background: var(--color-amber-bg);
+  color: var(--color-amber);
+  border: 1.5px solid rgba(245, 158, 11, 0.4);
+}
+
+.pollar-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pollar-status-badge.online .pollar-status-dot {
+  background: var(--color-emerald);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+  animation: pollar-pulse-dot 2s infinite ease-in-out;
+}
+
+.pollar-status-badge.offline .pollar-status-dot {
+  background: var(--color-rose);
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.7);
+}
+
+.pollar-status-badge.simulated .pollar-status-dot {
+  background: var(--color-amber);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+}
+
+@keyframes pollar-pulse-dot {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.8; }
 }
 
 .pollar-icon-btn {

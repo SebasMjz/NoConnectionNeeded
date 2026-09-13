@@ -83,6 +83,7 @@ export default function DualDeviceSimulator() {
             onClick={() => setIsSimulatingOffline(!isSimulatingOffline)}
             className={`pollar-status-badge ${isOnline ? 'online' : 'offline'}`}
           >
+            <div className="pollar-status-dot" />
             {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </button>

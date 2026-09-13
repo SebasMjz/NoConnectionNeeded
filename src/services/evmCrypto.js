@@ -661,6 +661,18 @@ export async function submitRealEvmBatchTransaction({
             nonceVal
           );
           usedVaultContract = true;
+        } else if (tv[0]?.toLowerCase() === payerAddress?.toLowerCase() && tokenLocked > 0n && tokenAvail === 0n && tokenSettled > 0n) {
+          console.log(`[EVM] Vault tokens for ${payerAddress} were already settled on-chain. Marking batch as confirmed.`);
+          return {
+            success: true,
+            hash: tv[4] && tv[4] !== ethers.ZeroHash ? tv[4] : '0x' + '0'.repeat(64),
+            blockNumber: 'Confirmado On-Chain',
+            merkleRoot: formattedRoot,
+            vaultAddress: targetVault,
+            anchorRecipient: payeeAddress,
+            network: network.name,
+            explorerUrl: `${network.blockExplorer}/address/${targetVault}`
+          };
         }
       } catch (tokenCheckErr) {
         console.warn('[EVM] Token vault check error:', tokenCheckErr.message);

@@ -14,7 +14,8 @@ import {
   Copy,
   Check,
   Fuel,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 import { EVM_NETWORKS } from '../services/evmCrypto';
 
@@ -30,7 +31,10 @@ export default function SyncManager() {
     activeEvmChain,
     myWallet,
     deviceA,
-    refreshOnlineBalance
+    refreshOnlineBalance,
+    autoSyncEnabled,
+    setAutoSyncEnabled,
+    autoSyncStatus
   } = useWallet();
 
   const [feedback, setFeedback] = useState({ type: '', message: '', isGasError: false });
@@ -165,6 +169,61 @@ export default function SyncManager() {
             <Radio size={12} className={isOnline ? 'animate-pulse' : ''} />
             {isOnline ? 'Red Lista' : 'Sin Conexión'}
           </span>
+        </div>
+
+        {/* Auto-Sync Banner */}
+        <div style={{
+          padding: '12px 14px',
+          borderRadius: 14,
+          background: autoSyncEnabled ? 'rgba(0, 98, 255, 0.05)' : '#F8FAFC',
+          border: `1.5px solid ${autoSyncEnabled ? 'rgba(0, 98, 255, 0.2)' : 'var(--border-subtle)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: autoSyncEnabled ? 'var(--pollar-blue-light)' : '#E2E8F0',
+              color: autoSyncEnabled ? 'var(--pollar-blue)' : 'var(--text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Zap size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>
+                Auto-Sincronización al Conectar
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {autoSyncEnabled 
+                  ? 'Activo: Transmite pagos offline a Sepolia ni bien detecta internet' 
+                  : 'Pausado: Se sincroniza únicamente al pulsar el botón'}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
+            type="button"
+            style={{
+              padding: '6px 14px',
+              borderRadius: 10,
+              background: autoSyncEnabled ? 'var(--pollar-blue)' : '#CBD5E1',
+              color: '#FFFFFF',
+              fontSize: 11,
+              fontWeight: 800,
+              border: 'none',
+              cursor: 'pointer',
+              flexShrink: 0
+            }}
+          >
+            {autoSyncEnabled ? 'Activado' : 'Pausado'}
+          </button>
         </div>
 
         {/* EVM Submitter & Gas Status Panel */}

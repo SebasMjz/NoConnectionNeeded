@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Network } from '@capacitor/network';
 import { 
   generateRealStellarKeypair,
   computeCanonicalTxHash,
@@ -50,10 +51,13 @@ export function WalletProvider({ children }) {
   // Device Selection: 'device_a' (Payer) | 'device_b' (Payee/Merchant) | 'dual_sim' (Split View)
   const [activeDevice, setActiveDevice] = useState('device_a');
   
-  // Real or Simulated Network Connectivity
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Real Hardware and Active Connectivity Detection
+  const [isHardwareOnline, setIsHardwareOnline] = useState(() => {
+    return typeof navigator !== 'undefined' ? navigator.onLine : true;
+  });
   const [isSimulatingOffline, setIsSimulatingOffline] = useState(false);
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [autoSyncStatus, setAutoSyncStatus] = useState(null);
 
   // Authentication & User Session
   const [currentUser, setCurrentUser] = useState(() => {
@@ -169,18 +173,131 @@ export function WalletProvider({ children }) {
         console.error('Failed to load saved state:', e);
       }
     }
+  }, []);
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+  // Active probe function to test actual internet packet reachability
+  const probeRealInternet = async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return false;
+    }
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2600);
+
+      // Probe Cloudflare CDN trace (fast, reliable, CORS enabled)
+      const res = await fetch(`https://cloudflare.com/cdn-cgi/trace?_t=${Date.now()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      return res.ok;
+    } catch (err) {
+      // Secondary fallback probe to Sepolia RPC
+      try {
+        const controller2 = new AbortController();
+        const timeoutId2 = setTimeout(() => controller2.abort(), 2600);
+        const rpcUrl = EVM_NETWORKS[activeEvmChain]?.rpcUrl || 'https://sepolia.drpc.org';
+        const res2 = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'net_version', params: [] }),
+          signal: controller2.signal
+        });
+        clearTimeout(timeoutId2);
+        return res2.ok;
+      } catch (err2) {
+        return false;
+      }
+    }
+  };
+
+  const checkConnectivityNow = async () => {
+    const online = await probeRealInternet();
+    setIsHardwareOnline(online);
+    return online;
+  };
+
+  // Multi-tier Network Connectivity Listener (Capacitor Native + DOM + Active Heartbeat)
+  useEffect(() => {
+    let isMounted = true;
+    let capListener = null;
+
+    const verifyAndUpdate = async () => {
+      const online = await probeRealInternet();
+      if (isMounted) {
+        setIsHardwareOnline(online);
+      }
+    };
+
+    // Initial immediate probe
+    verifyAndUpdate();
+
+    // 1. Capacitor Native Network Plugin Listener (Android ConnectivityManager)
+    try {
+      Network.getStatus().then(status => {
+        if (!isMounted) return;
+        if (status && status.connected === false) {
+          setIsHardwareOnline(false);
+        } else {
+          verifyAndUpdate();
+        }
+      }).catch(() => {});
+
+      Network.addListener('networkStatusChange', status => {
+        if (!isMounted) return;
+        console.log('[Network] Native status change:', status);
+        if (status && status.connected === false) {
+          setIsHardwareOnline(false);
+        } else {
+          verifyAndUpdate();
+        }
+      }).then(handle => {
+        capListener = handle;
+      }).catch(() => {});
+    } catch (e) {
+      console.warn('[Network] Capacitor listener fallback:', e);
+    }
+
+    // 2. Web DOM Events
+    const onOnline = () => verifyAndUpdate();
+    const onOffline = () => {
+      if (isMounted) setIsHardwareOnline(false);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        verifyAndUpdate();
+      }
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('focus', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // 3. Periodic Ping Heartbeat (every 3.5s when visible)
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        verifyAndUpdate();
+      }
+    }, 3500);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('focus', onOnline);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (capListener && typeof capListener.remove === 'function') {
+        capListener.remove();
+      }
     };
-  }, []);
+  }, [activeEvmChain]);
+
+  // Effective online state: must be hardware connected AND not simulating offline
+  const effectiveOnline = isHardwareOnline && !isSimulatingOffline;
 
   // Save to localStorage
   useEffect(() => {
@@ -206,9 +323,6 @@ export function WalletProvider({ children }) {
       });
     }
   }, [transactions, activeNetwork]);
-
-  // Effective online state
-  const effectiveOnline = isOnline && !isSimulatingOffline;
 
   // Network Switcher
   const switchNetwork = (network) => {
@@ -257,6 +371,26 @@ export function WalletProvider({ children }) {
               spentOffline
             };
           });
+
+          // If the token vault shows totalSettled > 0 on-chain, mark any pending payer txs as settled!
+          if (res.tokenVaultState && res.tokenVaultState.totalSettled > 0) {
+            setTransactions(prev => {
+              let updated = false;
+              const mapped = prev.map(tx => {
+                if (tx.status !== 'SYNCED_ONCHAIN' && tx.payload?.payer?.toLowerCase() === address.toLowerCase()) {
+                  updated = true;
+                  return {
+                    ...tx,
+                    status: 'SYNCED_ONCHAIN',
+                    syncedBy: 'Smart Contract Escrow (Liquidado en Sepolia)',
+                    syncedAt: Date.now()
+                  };
+                }
+                return tx;
+              });
+              return updated ? mapped : prev;
+            });
+          }
         }
 
         setIsRefreshingBalance(false);
@@ -289,6 +423,72 @@ export function WalletProvider({ children }) {
       refreshOnlineBalance();
     }
   }, [activeNetwork, activeEvmChain, effectiveOnline]);
+
+  // Automatic Synchronization whenever internet is restored or available
+  const isAutoSyncingRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoSyncEnabled || !effectiveOnline) return;
+
+    const pendingTxs = transactions.filter(tx => tx.status !== 'SYNCED_ONCHAIN');
+    if (pendingTxs.length === 0) return;
+
+    if (isAutoSyncingRef.current || isSyncing) return;
+
+    console.log(`[AutoSync] Conexión activa detectada con ${pendingTxs.length} transacción(es) pendiente(s). Sincronizando automáticamente...`);
+
+    setAutoSyncStatus({
+      status: 'syncing',
+      message: `Conexión detectada: Sincronizando ${pendingTxs.length} transacción(es) en Sepolia...`,
+      timestamp: Date.now()
+    });
+
+    const timer = setTimeout(async () => {
+      if (isAutoSyncingRef.current || isSyncing) return;
+      isAutoSyncingRef.current = true;
+
+      try {
+        // Refresh balance to inspect latest on-chain escrow state
+        await refreshOnlineBalance();
+
+        // Check again if transactions are still pending after balance refresh
+        const currentPending = transactions.filter(tx => tx.status !== 'SYNCED_ONCHAIN');
+        if (currentPending.length === 0) {
+          setAutoSyncStatus({
+            status: 'success',
+            message: 'Transacciones verificadas y confirmadas on-chain.',
+            timestamp: Date.now()
+          });
+          setTimeout(() => setAutoSyncStatus(null), 4000);
+          return;
+        }
+
+        const res = await syncToNetwork('AUTO_ONLINE');
+        setAutoSyncStatus({
+          status: 'success',
+          message: `¡Sincronizado automáticamente en ${isEvm ? 'Sepolia' : 'Stellar'}! (Bloque #${res.blockNumber || res.stellarLedger || 'Reciente'})`,
+          timestamp: Date.now()
+        });
+
+        setTimeout(() => setAutoSyncStatus(null), 5000);
+      } catch (err) {
+        console.warn('[AutoSync] Notice during auto-sync:', err.message);
+        const isGasErr = err.code === 'INSUFFICIENT_GAS' || (err.message && (err.message.includes('Gas') || err.message.includes('gas') || err.message.includes('insufficient')));
+        setAutoSyncStatus({
+          status: 'error',
+          message: isGasErr
+            ? 'Requiere una fracción de Sepolia ETH para cubrir el gas de la red.'
+            : `Auto-sync en pausa: ${err.message || 'Error de conexión'}`,
+          timestamp: Date.now(),
+          isGasError: isGasErr
+        });
+      } finally {
+        isAutoSyncingRef.current = false;
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [effectiveOnline, transactions, autoSyncEnabled, isEvm]);
 
   // Link / Import custom account (EVM 0x... / Private Key or Stellar Secret/Public Key)
   const linkCustomAccount = async (inputKey) => {
@@ -537,21 +737,21 @@ export function WalletProvider({ children }) {
       }
 
       const totalSyncedAmount = pendingSyncTxs.reduce((acc, tx) => acc + tx.payload.amount, 0);
-      const currentSubmitter = activeDevice === 'device_b' ? 'Dispositivo B (Comercio)' : 'Dispositivo A (Pagador)';
-      const submitterAccount = activeDevice === 'device_b' ? deviceB : deviceA;
+      const currentSubmitter = myWallet?.name || 'Mi Billetera Pollar';
+      const submitterAccount = myWallet;
 
       let syncResult;
 
       if (isEvm) {
         // Extract real payer and payee from the batch transactions
-        const batchPayer = pendingSyncTxs[0]?.payload?.payer || deviceA.publicKey;
-        const batchPayee = pendingSyncTxs[0]?.payload?.payee || deviceB.publicKey;
+        const batchPayer = pendingSyncTxs[0]?.payload?.payer || myWallet.publicKey;
+        const batchPayee = pendingSyncTxs[0]?.payload?.payee || myWallet.publicKey;
 
         // Broadcast to EVM (Sepolia / HSK / Base)
         const evmRes = await submitRealEvmBatchTransaction({
           submitterPrivateKey: submitterAccount.secretKey,
           submitterAddress: submitterAccount.publicKey,
-          payerPrivateKey: deviceA.secretKey,
+          payerPrivateKey: myWallet.publicKey?.toLowerCase() === batchPayer?.toLowerCase() ? myWallet.secretKey : null,
           payerAddress: batchPayer,
           payeeAddress: batchPayee,
           amount: totalSyncedAmount,
@@ -631,11 +831,14 @@ export function WalletProvider({ children }) {
       }
 
       // Update balances after settlement on this device (receiver gets funds credited)
-      setMyWallet(prev => ({
-        ...prev,
-        mainBalance: prev.mainBalance + totalSyncedAmount,
-        receivedOffline: Math.max(0, (prev.receivedOffline || 0) - totalSyncedAmount),
-      }));
+      const isPayeeOnThisDevice = myWallet.publicKey?.toLowerCase() === batchPayee?.toLowerCase();
+      if (isPayeeOnThisDevice) {
+        setMyWallet(prev => ({
+          ...prev,
+          mainBalance: prev.mainBalance + totalSyncedAmount,
+          receivedOffline: Math.max(0, (prev.receivedOffline || 0) - totalSyncedAmount),
+        }));
+      }
 
       setLastSyncResult(syncResult);
       setIsSyncing(false);
@@ -847,10 +1050,15 @@ export function WalletProvider({ children }) {
       switchEvmChain,
       isEvm,
       isOnline: effectiveOnline,
+      isHardwareOnline,
       isSimulatingOffline,
       setIsSimulatingOffline,
       autoSyncEnabled,
       setAutoSyncEnabled,
+      autoSyncStatus,
+      setAutoSyncStatus,
+      checkConnectivityNow,
+      myWallet,
       deviceA,
       deviceB,
       transactions,

@@ -19,7 +19,9 @@ import {
   RotateCcw,
   LogOut,
   Sparkles,
-  X
+  X,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 function AppContent() {
@@ -32,8 +34,11 @@ function AppContent() {
     currentUser, 
     logout,
     isOnline, 
+    isHardwareOnline,
     isSimulatingOffline,
     setIsSimulatingOffline,
+    checkConnectivityNow,
+    autoSyncStatus,
     transactions, 
     resetDemoData,
     myWallet,
@@ -99,13 +104,49 @@ function AppContent() {
         </div>
 
         <div className="pollar-header-actions">
+          {/* Dynamic Online / Offline / Simulado Indicator */}
           <button
-            onClick={() => setIsSimulatingOffline(!isSimulatingOffline)}
-            className={`pollar-status-badge ${isOnline ? 'online' : 'offline'}`}
-            title={isOnline ? 'Conectado (Click para probar Offline)' : 'Modo Offline (Click para probar Online)'}
+            onClick={() => {
+              if (isSimulatingOffline) {
+                setIsSimulatingOffline(false);
+              } else if (!isHardwareOnline) {
+                checkConnectivityNow();
+              } else {
+                setIsSimulatingOffline(true);
+              }
+            }}
+            className={`pollar-status-badge ${
+              isSimulatingOffline 
+                ? 'simulated' 
+                : isOnline 
+                  ? 'online' 
+                  : 'offline'
+            }`}
+            title={
+              isSimulatingOffline
+                ? 'Modo Offline Simulado activo. Pulsa para volver a Online.'
+                : isOnline
+                  ? 'Conectado a Internet (Sepolia). Pulsa para simular Modo Offline.'
+                  : 'Sin conexión a Internet en el dispositivo. Pulsa para verificar.'
+            }
           >
-            {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-            <span>{isOnline ? 'Online' : 'Offline'}</span>
+            <div className="pollar-status-dot" />
+            {isSimulatingOffline ? (
+              <>
+                <WifiOff size={13} />
+                <span>Simulado Offline</span>
+              </>
+            ) : isOnline ? (
+              <>
+                <Wifi size={13} />
+                <span>Online</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={13} />
+                <span>Sin Internet</span>
+              </>
+            )}
           </button>
 
           <button 
@@ -125,6 +166,67 @@ function AppContent() {
           </button>
         </div>
       </header>
+
+      {/* Auto-Sync Live Status Banner */}
+      {autoSyncStatus && (
+        <div 
+          style={{
+            margin: '0 16px 12px 16px',
+            padding: '10px 14px',
+            borderRadius: 14,
+            fontSize: 12,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            boxShadow: '0 3px 10px rgba(0,0,0,0.05)',
+            background: autoSyncStatus.status === 'success' 
+              ? 'var(--color-emerald-bg)' 
+              : autoSyncStatus.status === 'syncing' 
+                ? 'var(--pollar-blue-light)' 
+                : 'var(--color-amber-bg)',
+            color: autoSyncStatus.status === 'success'
+              ? 'var(--color-emerald)'
+              : autoSyncStatus.status === 'syncing'
+                ? 'var(--pollar-blue)'
+                : 'var(--color-amber)',
+            border: `1px solid ${
+              autoSyncStatus.status === 'success' 
+                ? 'rgba(16, 185, 129, 0.3)' 
+                : autoSyncStatus.status === 'syncing' 
+                  ? 'rgba(0, 98, 255, 0.3)' 
+                  : 'rgba(245, 158, 11, 0.3)'
+            }`
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            {autoSyncStatus.status === 'syncing' && <RefreshCw size={14} className="animate-spin" style={{ flexShrink: 0 }} />}
+            {autoSyncStatus.status === 'success' && <CheckCircle2 size={14} style={{ flexShrink: 0 }} />}
+            {autoSyncStatus.status === 'error' && <AlertCircle size={14} style={{ flexShrink: 0 }} />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {autoSyncStatus.message}
+            </span>
+          </div>
+          {autoSyncStatus.status === 'error' && (
+            <button 
+              onClick={() => setActiveTab('sync')} 
+              style={{ 
+                fontSize: 11, 
+                fontWeight: 800, 
+                textDecoration: 'underline', 
+                background: 'none', 
+                border: 'none', 
+                color: 'inherit',
+                cursor: 'pointer',
+                flexShrink: 0
+              }}
+            >
+              Ver Detalle
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area with Bottom Clearance */}
       <main className="pollar-main-content">
