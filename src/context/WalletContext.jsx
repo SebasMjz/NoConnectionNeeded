@@ -218,7 +218,7 @@ export function WalletProvider({ children }) {
 
   // Withdraw from Vault
   const withdrawFromVault = useCallback(async (amount) => {
-    if (!vaultContract || !signer) throw new Error('No conectado');
+    if (!vaultContract || !usdcContract || !signer) throw new Error('No conectado');
     try {
       const decimals = await usdcContract.decimals();
       const amountUnits = ethers.parseUnits(amount.toString(), decimals);
