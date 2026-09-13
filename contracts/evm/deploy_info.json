@@ -7,7 +7,9 @@
       "rpcUrl": "https://rpc.sepolia.org",
       "blockExplorer": "https://sepolia.etherscan.io",
       "faucetUrl": "https://sepoliafaucet.com",
-      "vaultAddress": "0xc0E153f5B0FCAfD673288439d57c276362dc8799",
+      "vaultAddress": "0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E",
+      "forwarderAddress": "0xa0c88e92B8d9D49cc256a036f29F47053ad422cC",
+      "usdcAddress": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
       "currencySymbol": "SEP",
       "nativeToken": "ETH"
     },
@@ -18,6 +20,8 @@
       "blockExplorer": "https://hashkeychain-testnet-explorer.alt.technology",
       "faucetUrl": "https://faucet.hashkey.com",
       "vaultAddress": "0x8901234567890123456789012345678901234567",
+      "forwarderAddress": "",
+      "usdcAddress": "",
       "currencySymbol": "HSK",
       "nativeToken": "HSK"
     },
@@ -28,6 +32,8 @@
       "blockExplorer": "https://sepolia.basescan.org",
       "faucetUrl": "https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet",
       "vaultAddress": "0x9012345678901234567890123456789012345678",
+      "forwarderAddress": "",
+      "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "currencySymbol": "ETH",
       "nativeToken": "ETH"
     },
@@ -37,6 +43,8 @@
       "rpcUrl": "http://127.0.0.1:8545",
       "blockExplorer": "http://localhost:8545",
       "vaultAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "forwarderAddress": "",
+      "usdcAddress": "",
       "currencySymbol": "ETH",
       "nativeToken": "ETH"
     }

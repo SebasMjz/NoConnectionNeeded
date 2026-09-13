@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Read arguments: --network <name> --private-key <key>
+// Read arguments: --network <name> --private-key <key> --contract <vault|forwarder|usdc|all>
 const args = process.argv.slice(2);
 function getArg(flag, defaultValue) {
   const index = args.indexOf(flag);
@@ -18,6 +18,7 @@ function getArg(flag, defaultValue) {
 
 const networkName = getArg('--network', 'sepolia');
 const privateKey = getArg('--private-key', process.env.PRIVATE_KEY);
+const targetContract = getArg('--contract', 'all');
 
 // 1. Load deploy config
 const configPath = path.resolve(__dirname, 'deploy_info.json');
@@ -30,29 +31,29 @@ if (!networkConfig) {
   process.exit(1);
 }
 
-// 2. Load compiled artifact
-const artifactPath = path.resolve(__dirname, 'build', 'PollarVault.json');
-if (!fs.existsSync(artifactPath)) {
-  console.error('[ERROR] Build artifact not found. Please run: node contracts/evm/compile.mjs');
-  process.exit(1);
+function loadArtifact(fileName) {
+  const artifactPath = path.resolve(__dirname, 'build', fileName);
+  if (!fs.existsSync(artifactPath)) {
+    throw new Error(`Build artifact ${fileName} not found. Please run: node contracts/evm/compile.mjs`);
+  }
+  return JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
 }
-
-const { abi, bytecode } = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
 
 async function main() {
   console.log('========================================================');
-  console.log(`Desplegando PollarOfflineVault en: ${networkConfig.name}`);
+  console.log(`Desplegando contratos en: ${networkConfig.name}`);
   console.log(`RPC URL: ${networkConfig.rpcUrl}`);
   console.log(`Chain ID: ${networkConfig.chainId}`);
+  console.log(`Target: ${targetContract}`);
   console.log('========================================================\n');
 
   if (!privateKey) {
     console.error('[ERROR] No se especificó Private Key.');
     console.log('\nUso:');
-    console.log('  node contracts/evm/deploy.mjs --network sepolia --private-key 0xTU_CLAVE_PRIVADA');
+    console.log('  node contracts/evm/deploy.mjs --network hskTestnet --private-key 0xTU_CLAVE_PRIVADA --contract all');
     console.log('O configura la variable de entorno:');
     console.log('  $env:PRIVATE_KEY="0xTU_CLAVE_PRIVADA"');
-    console.log('  node contracts/evm/deploy.mjs --network sepolia');
+    console.log('  node contracts/evm/deploy.mjs --network hskTestnet');
     process.exit(1);
   }
 
@@ -72,38 +73,84 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Transmitiendo contrato PollarOfflineVault a la blockchain...');
-  const factory = new ethers.ContractFactory(abi, bytecode, wallet);
-  const contract = await factory.deploy();
+  let forwarderAddress = networkConfig.forwarderAddress;
+  let usdcAddress = networkConfig.usdcAddress;
+  let vaultAddress = networkConfig.vaultAddress;
 
-  console.log(`Transacción de despliegue enviada: ${contract.deploymentTransaction().hash}`);
-  console.log('Esperando confirmación on-chain (1 bloque)...');
+  // 1. Deploy PollarForwarder if needed
+  if (targetContract === 'all' || targetContract === 'forwarder') {
+    console.log('\n[1/3] Desplegando PollarForwarder (ERC-2771 Relayer)...');
+    const { abi, bytecode } = loadArtifact('PollarForwarder.json');
+    const factory = new ethers.ContractFactory(abi, bytecode, wallet);
+    const forwarder = await factory.deploy();
+    console.log(`Tx enviada: ${forwarder.deploymentTransaction().hash}`);
+    await forwarder.waitForDeployment();
+    forwarderAddress = await forwarder.getAddress();
+    console.log(`✓ PollarForwarder desplegado en: ${forwarderAddress}`);
+    networkConfig.forwarderAddress = forwarderAddress;
+  }
 
-  await contract.waitForDeployment();
-  const deployedAddress = await contract.getAddress();
+  // 2. Deploy MockUSDC if on HSK or requested
+  if (targetContract === 'all' || targetContract === 'usdc') {
+    if (!usdcAddress || targetContract === 'usdc' || networkName === 'hskTestnet') {
+      console.log('\n[2/3] Desplegando MockUSDC (EIP-3009 + EIP-2612)...');
+      const { abi, bytecode } = loadArtifact('MockUSDC.json');
+      const factory = new ethers.ContractFactory(abi, bytecode, wallet);
+      const usdc = await factory.deploy();
+      console.log(`Tx enviada: ${usdc.deploymentTransaction().hash}`);
+      await usdc.waitForDeployment();
+      usdcAddress = await usdc.getAddress();
+      console.log(`✓ MockUSDC desplegado en: ${usdcAddress}`);
+      networkConfig.usdcAddress = usdcAddress;
+    } else {
+      console.log(`\n[2/3] Usando USDC existente en ${networkName}: ${usdcAddress}`);
+    }
+  }
 
-  console.log('\n========================================================');
-  console.log('[ÉXITO] ¡Contrato Desplegado Exitosamente!');
-  console.log(`Dirección del Contrato: ${deployedAddress}`);
-  console.log(`Explorer: ${networkConfig.blockExplorer}/address/${deployedAddress}`);
-  console.log('========================================================\n');
+  // 3. Deploy PollarOfflineVault
+  if (targetContract === 'all' || targetContract === 'vault') {
+    console.log('\n[3/3] Desplegando PollarOfflineVault (con forwarder y soporte gasless)...');
+    const { abi, bytecode } = loadArtifact('PollarVault.json');
+    const factory = new ethers.ContractFactory(abi, bytecode, wallet);
+    const vault = await factory.deploy(forwarderAddress || ethers.ZeroAddress);
+    console.log(`Tx enviada: ${vault.deploymentTransaction().hash}`);
+    await vault.waitForDeployment();
+    vaultAddress = await vault.getAddress();
+    console.log(`✓ PollarOfflineVault desplegado en: ${vaultAddress}`);
+    networkConfig.vaultAddress = vaultAddress;
+  }
 
-  // Update deploy_info.json
-  config.networks[networkName].vaultAddress = deployedAddress;
+  // Save config
+  config.networks[networkName] = networkConfig;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  console.log(`✓ Actualizado contracts/evm/deploy_info.json con la nueva dirección.`);
+  console.log(`\n✓ Configuración actualizada en contracts/evm/deploy_info.json`);
 
   // Update src/services/evmCrypto.js
   const evmCryptoPath = path.resolve(__dirname, '../../src/services/evmCrypto.js');
   if (fs.existsSync(evmCryptoPath)) {
     let evmCode = fs.readFileSync(evmCryptoPath, 'utf8');
-    const regex = new RegExp(`(${networkName}:[\\s\\S]*?vaultAddress:\\s*')0x[a-fA-F0-9]{40}(')`);
-    if (regex.test(evmCode)) {
-      evmCode = evmCode.replace(regex, `$1${deployedAddress}$2`);
-      fs.writeFileSync(evmCryptoPath, evmCode);
-      console.log(`✓ Actualizado src/services/evmCrypto.js con la nueva dirección.`);
+    if (vaultAddress) {
+      const vRegex = new RegExp(`(${networkName}:[\\s\\S]*?vaultAddress:\\s*')0x[a-fA-F0-9]{40}(')`);
+      if (vRegex.test(evmCode)) {
+        evmCode = evmCode.replace(vRegex, `$1${vaultAddress}$2`);
+      }
     }
+    if (usdcAddress) {
+      const uRegex = new RegExp(`(${networkName}:[\\s\\S]*?usdcAddress:\\s*')[^']*(')`);
+      if (uRegex.test(evmCode)) {
+        evmCode = evmCode.replace(uRegex, `$1${usdcAddress}$2`);
+      }
+    }
+    fs.writeFileSync(evmCryptoPath, evmCode);
+    console.log(`✓ src/services/evmCrypto.js actualizado.`);
   }
+
+  console.log('\n========================================================');
+  console.log('🎉 Despliegue completado con éxito!');
+  console.log(`- Forwarder (ERC-2771): ${forwarderAddress || 'No desplegado'}`);
+  console.log(`- USDC Token:          ${usdcAddress || 'N/A'}`);
+  console.log(`- Pollar Vault:        ${vaultAddress || 'N/A'}`);
+  console.log('========================================================\n');
 }
 
 main().catch((err) => {

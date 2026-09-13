@@ -22,9 +22,11 @@ export const EVM_NETWORKS = {
     symbol: 'ETH',
     nativeToken: 'ETH',
     tokenSymbol: 'USDC',
-    usdcAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    usdcAddress: import.meta.env?.VITE_USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     usdcDecimals: 6,
-    vaultAddress: '0xc0E153f5B0FCAfD673288439d57c276362dc8799'
+    vaultAddress: import.meta.env?.VITE_VAULT_ADDRESS || '0x095Db0B333A95c7fC2cEe657857F96C394a2DC5E',
+    forwarderAddress: import.meta.env?.VITE_FORWARDER_ADDRESS || '0xa0c88e92B8d9D49cc256a036f29F47053ad422cC',
+    relayerAddress: '0x73585ded2E86D584eaf2fcB8e62A7803910c146B'
   },
   hskTestnet: {
     id: 'hskTestnet',
@@ -55,6 +57,28 @@ export const EVM_NETWORKS = {
     vaultAddress: '0x9012345678901234567890123456789012345678'
   }
 };
+
+/**
+ * Returns dynamic Relayer API URL based on user override, VITE_BACKEND_URL, or ngrok
+ */
+export function getRelayerUrl() {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('pollar_relayer_url');
+    if (saved && saved.trim()) {
+      return saved.trim().replace(/\/+$/, '');
+    }
+    // If VITE_BACKEND_URL is configured (like ngrok), prioritize it
+    if (import.meta.env?.VITE_BACKEND_URL) {
+      return import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '');
+    }
+    // If running in browser on mobile/other host via LAN
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return `${window.location.protocol}//${window.location.hostname}:3001`;
+    }
+    return 'https://c2bf-132-251-224-215.ngrok-free.app';
+  }
+  return import.meta.env?.VITE_BACKEND_URL || 'https://c2bf-132-251-224-215.ngrok-free.app';
+}
 
 /**
  * Generates a genuine EVM Secp256k1 Keypair (0x... address + private key)
@@ -533,7 +557,105 @@ export async function depositTokenToVault({
 
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
   const signer = new ethers.Wallet(privateKey, provider);
+  const amountUnits = ethers.parseUnits(amountTokens.toString(), decimals);
 
+  // Check user's native gas balance
+  const gasBalanceWei = await provider.getBalance(signer.address).catch(() => 0n);
+  const gasBalanceEth = parseFloat(ethers.formatEther(gasBalanceWei));
+  const relayerUrl = getRelayerUrl();
+
+  // 1. If user has low/zero ETH or on Sepolia, attempt 100% Gasless Deposit via Relayer (EIP-3009)
+  let relayerErrMsg = null;
+  if (gasBalanceEth < 0.0005) {
+    try {
+      console.log(`[EVM] Gas bajo (${gasBalanceEth.toFixed(6)} ETH). Intentando depósito gasless con autorización EIP-3009 en ${relayerUrl}...`);
+      const nonce = ethers.hexlify(ethers.randomBytes(32));
+      const validAfter = 0;
+      const validBefore = Math.floor(Date.now() / 1000) + 7200; // 2 horas
+
+      const domain = {
+        name: 'USDC', // On-chain domain separator name on Sepolia
+        version: '2',
+        chainId: network.chainId,
+        verifyingContract: tokenAddress
+      };
+
+      const types = {
+        ReceiveWithAuthorization: [
+          { name: 'from', type: 'address' },
+          { name: 'to', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'validAfter', type: 'uint256' },
+          { name: 'validBefore', type: 'uint256' },
+          { name: 'nonce', type: 'bytes32' }
+        ]
+      };
+
+      const message = {
+        from: signer.address,
+        to: targetVault,
+        value: amountUnits,
+        validAfter,
+        validBefore,
+        nonce
+      };
+
+      const sigHex = await signer.signTypedData(domain, types, message);
+      const sig = ethers.Signature.from(sigHex);
+
+      const relayerRes = await fetch(`${relayerUrl}/api/relay/deposit-authorization`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({
+          token: tokenAddress,
+          from: signer.address,
+          amount: amountTokens.toString(),
+          validAfter,
+          validBefore,
+          nonce,
+          v: sig.v,
+          r: sig.r,
+          s: sig.s
+        })
+      });
+
+      if (relayerRes.ok) {
+        const data = await relayerRes.json();
+        if (data.success) {
+          console.log(`[EVM] ¡Depósito gasless completado por Relayer! Tx: ${data.txHash}`);
+          return {
+            success: true,
+            hash: data.txHash,
+            blockNumber: data.blockNumber,
+            vaultAddress: targetVault,
+            gasless: true,
+            explorerUrl: data.explorerUrl
+          };
+        }
+      }
+      const errJson = await relayerRes.json().catch(() => ({}));
+      relayerErrMsg = errJson.error || errJson.message || `Código HTTP ${relayerRes.status}`;
+      console.warn('[EVM] Relayer gasless aviso:', relayerErrMsg);
+    } catch (relayErr) {
+      relayerErrMsg = relayErr.message;
+      console.warn('[EVM] No se pudo procesar vía Relayer gasless:', relayErr.message);
+    }
+
+    // If account has 0 ETH, do NOT attempt direct approve/deposit because it will crash with INSUFFICIENT_FUNDS
+    if (gasBalanceEth < 0.00003) {
+      throw new Error(
+        `No se pudo completar el depósito gasless a través del Relayer en ${relayerUrl}. ` +
+        `Tu cuenta tiene 0 Sepolia ETH, por lo que requiere el Relayer para patrocinar la transacción. ` +
+        `Asegúrate de que el backend Relayer esté activo y que tu celular y PC estén en la misma red Wi-Fi (URL: ${relayerUrl}). ` +
+        (relayerErrMsg ? `[Detalle: ${relayerErrMsg}]` : '')
+      );
+    }
+  }
+
+  // 2. Direct On-Chain Transaction fallback (Approve + Deposit)
   const erc20Abi = [
     'function approve(address spender, uint256 amount) external returns (bool)',
     'function allowance(address owner, address spender) external view returns (uint256)',
@@ -547,9 +669,7 @@ export async function depositTokenToVault({
   const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
   const vaultContract = new ethers.Contract(targetVault, vaultAbi, signer);
 
-  const amountUnits = ethers.parseUnits(amountTokens.toString(), decimals);
-
-  // 1. Approve vault if allowance is insufficient
+  // Approve vault if allowance is insufficient
   const currentAllowance = await tokenContract.allowance(signer.address, targetVault);
   if (currentAllowance < amountUnits) {
     console.log(`[EVM] Approving vault to spend ${amountTokens} tokens...`);
@@ -557,7 +677,7 @@ export async function depositTokenToVault({
     await approveTx.wait(1);
   }
 
-  // 2. Deposit into vault
+  // Deposit into vault
   console.log(`[EVM] Depositing ${amountTokens} tokens into vault from ${signer.address}...`);
   const depositTx = await vaultContract.depositTokenVault(tokenAddress, amountUnits);
   const receipt = await depositTx.wait(1);
@@ -567,6 +687,7 @@ export async function depositTokenToVault({
     hash: depositTx.hash,
     blockNumber: receipt.blockNumber,
     vaultAddress: targetVault,
+    gasless: false,
     explorerUrl: `${network.blockExplorer}/tx/${depositTx.hash}`
   };
 }
@@ -609,6 +730,48 @@ export async function submitRealEvmBatchTransaction({
 
   const minGasRequired = ethers.parseEther('0.00003');
   if (gasBalance < minGasRequired) {
+    // Attempt Gasless Settlement via Relayer
+    try {
+      console.log(`[EVM] Submitter no tiene suficiente gas (${gasBalanceEth.toFixed(6)} ETH). Transmitiendo liquidación gasless mediante Relayer...`);
+      const relayerUrl = getRelayerUrl();
+      const relayerRes = await fetch(`${relayerUrl}/api/relay/settle-batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({
+          payer: payerAddress,
+          payee: payeeAddress,
+          token: network.usdcAddress,
+          amount: amount.toString(),
+          merkleRoot: formattedRoot,
+          nonce: Math.floor(Date.now() / 1000)
+        })
+      });
+
+      if (relayerRes.ok) {
+        const data = await relayerRes.json();
+        if (data.success) {
+          console.log(`[EVM] ¡Liquidación de lote completada exitosamente por Relayer! Tx: ${data.txHash}`);
+          return {
+            success: true,
+            hash: data.txHash,
+            blockNumber: data.blockNumber,
+            merkleRoot: formattedRoot,
+            vaultAddress: targetVault,
+            anchorRecipient: payeeAddress,
+            network: network.name,
+            relayed: true,
+            usedVaultContract: data.usedVault,
+            explorerUrl: data.explorerUrl
+          };
+        }
+      }
+    } catch (relayErr) {
+      console.warn('[EVM] Relayer no respondió para liquidación:', relayErr.message);
+    }
+
     const err = new Error(
       `Gas insuficiente en la cuenta transmisora (${broadcasterAddress.slice(0, 6)}...${broadcasterAddress.slice(-4)}). Saldo: ${gasBalanceEth.toFixed(6)} Sepolia ETH. Para registrar este lote en la red Ethereum Sepolia requieres una fracción de Sepolia ETH (ej: 0.001 ETH) para cubrir el gas de la red.`
     );

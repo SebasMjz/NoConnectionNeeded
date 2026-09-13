@@ -6,18 +6,25 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log('=== Compiling PollarOfflineVault (Solidity) ===\n');
+console.log('=== Compiling Pollar EVM Contracts (Solidity 0.8.20) ===\n');
 
-const contractPath = path.resolve(__dirname, 'PollarVault.sol');
-const source = fs.readFileSync(contractPath, 'utf8');
+const contracts = [
+  { file: 'PollarVault.sol', contract: 'PollarOfflineVault', output: 'PollarVault.json' },
+  { file: 'MockUSDC.sol', contract: 'MockUSDC', output: 'MockUSDC.json' },
+  { file: 'PollarForwarder.sol', contract: 'PollarForwarder', output: 'PollarForwarder.json' }
+];
+
+const sources = {};
+for (const c of contracts) {
+  const filePath = path.resolve(__dirname, c.file);
+  if (fs.existsSync(filePath)) {
+    sources[c.file] = { content: fs.readFileSync(filePath, 'utf8') };
+  }
+}
 
 const input = {
   language: 'Solidity',
-  sources: {
-    'PollarVault.sol': {
-      content: source
-    }
-  },
+  sources,
   settings: {
     optimizer: {
       enabled: true,
@@ -50,40 +57,42 @@ if (hasErrors) {
   process.exit(1);
 }
 
-const contract = output.contracts['PollarVault.sol']['PollarOfflineVault'];
-const bytecode = contract.evm.bytecode.object;
-const deployedBytecode = contract.evm.deployedBytecode.object;
-const abi = contract.abi;
-const methodIdentifiers = contract.evm.methodIdentifiers;
-
-// Save build artifacts
 const buildDir = path.resolve(__dirname, 'build');
 if (!fs.existsSync(buildDir)) {
   fs.mkdirSync(buildDir, { recursive: true });
 }
 
-const artifactPath = path.resolve(buildDir, 'PollarVault.json');
-fs.writeFileSync(
-  artifactPath,
-  JSON.stringify(
-    {
-      contractName: 'PollarOfflineVault',
-      abi,
-      bytecode: `0x${bytecode}`,
-      deployedBytecode: `0x${deployedBytecode}`,
-      methodIdentifiers
-    },
-    null,
-    2
-  )
-);
+for (const c of contracts) {
+  const compiled = output.contracts[c.file]?.[c.contract];
+  if (!compiled) {
+    console.error(`[ERROR] Contract ${c.contract} not found in ${c.file}`);
+    continue;
+  }
 
-console.log('✓ Compilation Successful!');
-console.log(`✓ Artifact saved to: ${artifactPath}`);
-console.log(`✓ Bytecode Size: ${bytecode.length / 2} bytes`);
-console.log('\nMethod Selectors:');
-for (const [method, selector] of Object.entries(methodIdentifiers)) {
-  console.log(`  - 0x${selector} : ${method}`);
+  const bytecode = compiled.evm.bytecode.object;
+  const deployedBytecode = compiled.evm.deployedBytecode.object;
+  const abi = compiled.abi;
+  const methodIdentifiers = compiled.evm.methodIdentifiers;
+
+  const artifactPath = path.resolve(buildDir, c.output);
+  fs.writeFileSync(
+    artifactPath,
+    JSON.stringify(
+      {
+        contractName: c.contract,
+        sourceFile: c.file,
+        abi,
+        bytecode: `0x${bytecode}`,
+        deployedBytecode: `0x${deployedBytecode}`,
+        methodIdentifiers
+      },
+      null,
+      2
+    )
+  );
+
+  console.log(`✓ Compiled: ${c.contract} (${c.file}) -> build/${c.output}`);
+  console.log(`  Bytecode Size: ${bytecode.length / 2} bytes | Methods: ${Object.keys(methodIdentifiers).length}`);
 }
 
-console.log('\nContract ABI Entries:', abi.length);
+console.log('\n✓ All contracts compiled successfully!');

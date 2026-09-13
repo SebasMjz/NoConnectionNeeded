@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { generateEvmQrDataUrl, EVM_NETWORKS } from '../services/evmCrypto';
+import { generateEvmQrDataUrl, EVM_NETWORKS, getRelayerUrl } from '../services/evmCrypto';
 import { downloadQrImage, shareQrToWhatsApp } from '../utils/qrSharing';
 import {
   Lock,
@@ -78,6 +78,20 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
   const [depositOnChain, setDepositOnChain] = useState(true);
   const [lastDepositReceipt, setLastDepositReceipt] = useState(null);
+  const [currentRelayerUrl, setCurrentRelayerUrl] = useState(() => getRelayerUrl());
+
+  const handleConfigureRelayer = () => {
+    const entered = window.prompt(
+      'Configurar URL del Relayer Gasless (IP de tu PC con puerto 3001):',
+      currentRelayerUrl
+    );
+    if (entered !== null && entered.trim()) {
+      const clean = entered.trim().replace(/\/+$/, '');
+      localStorage.setItem('pollar_relayer_url', clean);
+      setCurrentRelayerUrl(clean);
+      setFeedback({ type: 'success', message: `URL del Relayer actualizada a: ${clean}` });
+    }
+  };
 
   const handleTransfer = async (e) => {
     e.preventDefault();
@@ -555,17 +569,17 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
                 <button
                   type="button"
-                  disabled={isDepositingVault || (currentAccount.mainBalance || 0) < 1 || (currentAccount.nativeBalance || 0) < 0.0003}
+                  disabled={isDepositingVault || (currentAccount.mainBalance || 0) < 1}
                   onClick={() => handleDepositTokenToSmartContract('1')}
                   style={{
                     padding: '9px 12px',
                     borderRadius: 12,
-                    background: ((currentAccount.mainBalance || 0) >= 1 && (currentAccount.nativeBalance || 0) >= 0.0003) ? '#10B981' : '#94A3B8',
+                    background: (currentAccount.mainBalance || 0) >= 1 ? '#10B981' : '#94A3B8',
                     color: '#FFFFFF',
                     fontWeight: 800,
                     fontSize: 11,
                     border: 'none',
-                    cursor: ((currentAccount.mainBalance || 0) >= 1 && (currentAccount.nativeBalance || 0) >= 0.0003) ? 'pointer' : 'not-allowed',
+                    cursor: (currentAccount.mainBalance || 0) >= 1 ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -575,10 +589,21 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   {isDepositingVault ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
                   <span>
                     {(currentAccount.mainBalance || 0) >= 1
-                      ? ((currentAccount.nativeBalance || 0) >= 0.0003 ? 'Depositar 1.00 USDC en Smart Contract' : 'Necesitas gas Sepolia ETH para depositar USDC')
+                      ? '⚡ Depositar 1.00 USDC (100% Gasless)'
                       : 'Sin saldo USDC en Billetera'}
                   </span>
                 </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', paddingTop: 4, borderTop: '1px dashed #CBD5E1' }}>
+                  <span>⚡ Relayer Gas: <strong style={{ color: '#059669' }}>{currentRelayerUrl}</strong></span>
+                  <button
+                    type="button"
+                    onClick={handleConfigureRelayer}
+                    style={{ border: 'none', background: 'none', color: 'var(--pollar-blue)', cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: 0 }}
+                  >
+                    Cambiar IP
+                  </button>
+                </div>
               </div>
             </div>
           )}

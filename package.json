@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "relay": "node server/index.js",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -16,7 +17,10 @@
     "buffer": "^6.0.3",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "ethers": "^6.17.0",
+    "express": "^5.2.1",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.45.0",
     "qrcode": "^1.5.4",
