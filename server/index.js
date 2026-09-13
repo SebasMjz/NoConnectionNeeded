@@ -26,10 +26,9 @@ const NETWORKS = {
     chainId: 133,
     rpcUrls: [
       'https://testnet.hsk.xyz',
-      'https://hsk-testnet.rpc.publicnode.com',
     ],
-    blockExplorer: 'https://hashkeychain-testnet-explorer.alt.technology',
-    usdcAddress: process.env.USDC_ADDRESS || '',
+    blockExplorer: 'https://testnet.hsk.xyz',
+    usdcAddress: '0x788952C55A04F32C4dC26dEd4858f5D6259f2F15',
   },
   hskMainnet: {
     name: 'HashKey Chain Mainnet',

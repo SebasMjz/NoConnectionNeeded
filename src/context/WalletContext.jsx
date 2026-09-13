@@ -1,225 +1,346 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { ethers } from 'ethers';
 
 const WalletContext = createContext();
 
-const STORAGE_KEY = 'pollar_wallet_v3';
-const AUTH_STORAGE_KEY = 'pollar_auth_user';
-const USERS_STORAGE_KEY = 'pollar_users';
-const SETTINGS_KEY = 'pollar_settings';
-const BIOMETRIC_CREDS_KEY = 'pollar_biometric_creds';
-const LINKED_WALLETS_KEY = 'pollar_linked_wallets';
+// HSK Testnet Config
+const HSK_TESTNET = {
+  chainId: 133,
+  rpcUrl: 'https://testnet.hsk.xyz',
+  name: 'HashKey Chain Testnet',
+  contracts: {
+    forwarder: '0xBFB5078c8afF57226F1f32de999dd0ADd559dcbC',
+    vault: '0x7e906F6C41660C218282fe4F5d7C76d8D8604d96',
+    usdc: '0x788952C55A04F32C4dC26dEd4858f5D6259f2F15',
+  }
+};
 
-function buildWalletState(kp, name = 'Mi Billetera', asset = 'XLM') {
-  return {
-    id: 'w_' + kp.publicKey.slice(0, 8),
-    name,
-    publicKey: kp.publicKey,
-    secretKey: kp.secretKey,
-    isReadOnly: false,
-    asset,
-    mainBalance: 0.0,
-    derivedOffline: 0.0,
-    spentOffline: 0.0,
-    receivedOffline: 0.0,
-    currentNonce: 0,
-    allBalances: [],
-    isOnlineAccountReady: false,
-    createdAt: Date.now(),
-  };
-}
+// Relayer URL (local)
+const RELAYER_URL = 'http://localhost:3001';
+
+// Contract ABIs (minimal)
+const ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function mint(address to, uint256 amount)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function transfer(address to, uint256 amount) returns (bool)'
+];
+
+const VAULT_ABI = [
+  'function depositVault() public payable',
+  'function depositTokenVault(address token, uint256 amount) external',
+  'function withdrawVault(uint256 amount) external',
+  'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+];
+
+const FORWARDER_ABI = [
+  'function getNonce(address from) external view returns (uint256)',
+  'function execute((address from, address to, uint256 value, uint256 gas, uint256 nonce, uint256 deadline, bytes data) req, bytes signature) external payable returns (bool, bytes)'
+];
+
+const STORAGE_KEY = 'pollar_evm_wallet_v1';
+const AUTH_KEY = 'pollar_auth_user';
 
 export function WalletProvider({ children }) {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SETTINGS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return { biometricEnabled: false, darkMode: true };
-  });
+  const [provider, setProvider] = useState(null);
+  const [signer, setSigner] = useState(null);
+  const [wallet, setWallet] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [usdcBalance, setUsdcBalance] = useState('0');
+  const [vaultBalance, setVaultBalance] = useState('0');
+  const [hskBalance, setHskBalance] = useState('0');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState(null);
 
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return null;
-  });
+  // Contracts
+  const [usdcContract, setUsdcContract] = useState(null);
+  const [vaultContract, setVaultContract] = useState(null);
+  const [forwarderContract, setForwarderContract] = useState(null);
 
-  const [linkedWallets, setLinkedWallets] = useState(() => {
-    try {
-      const saved = localStorage.getItem(LINKED_WALLETS_KEY);
-      if (saved) {
-        const wallets = JSON.parse(saved);
-        if (wallets.length > 0) return wallets;
+  // Initialize provider
+  useEffect(() => {
+    const initProvider = async () => {
+      try {
+        const prov = new ethers.JsonRpcProvider(HSK_TESTNET.rpcUrl, HSK_TESTNET.chainId);
+        setProvider(prov);
+
+        // Initialize contracts (read-only)
+        const usdc = new ethers.Contract(HSK_TESTNET.contracts.usdc, ERC20_ABI, prov);
+        const vault = new ethers.Contract(HSK_TESTNET.contracts.vault, VAULT_ABI, prov);
+        const forwarder = new ethers.Contract(HSK_TESTNET.contracts.forwarder, FORWARDER_ABI, prov);
+
+        setUsdcContract(usdc);
+        setVaultContract(vault);
+        setForwarderContract(forwarder);
+
+        console.log('[Wallet] Provider initialized, contracts loaded');
+      } catch (e) {
+        console.error('[Wallet] Init error:', e);
+        setError('Error conectando a HSK Testnet');
       }
-      // Migrate from v2
-      const oldSaved = localStorage.getItem('pollar_offline_wallet_v2_real');
-      if (oldSaved) {
-        const old = JSON.parse(oldSaved);
-        if (old.deviceA?.secretKey) {
-          const migrated = [buildWalletState(
-            { publicKey: old.deviceA.publicKey, secretKey: old.deviceA.secretKey },
-            'Mi Billetera',
-            old.deviceA.asset || 'XLM'
-          )];
-          localStorage.removeItem('pollar_offline_wallet_v2_real');
-          return migrated;
-        }
-      }
-    } catch (e) {}
-    return [];
-  });
+    };
+    initProvider();
+  }, []);
 
-  const [activeWalletId, setActiveWalletId] = useState(() => {
-    try {
-      const saved = localStorage.getItem(LINKED_WALLETS_KEY);
-      if (saved) {
-        const wallets = JSON.parse(saved);
-        if (wallets.length > 0) return wallets[0].id;
-      }
-    } catch (e) {}
-    return null;
-  });
-
-  const activeWallet = linkedWallets.find(w => w.id === activeWalletId) || linkedWallets[0] || null;
-
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [isSimulatingOffline, setIsSimulatingOffline] = useState(false);
-  const [transactions, setTransactions] = useState(() => {
+  // Load saved wallet
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved).transactions || [];
-    } catch (e) {}
-    return [];
-  });
-
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Persist linked wallets
-  useEffect(() => {
-    localStorage.setItem(LINKED_WALLETS_KEY, JSON.stringify(linkedWallets));
-  }, [linkedWallets]);
-
-  // Persist transactions
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, transactions, activeWalletId }));
-  }, [transactions, activeWalletId]);
-
-  // Persist auth
-  useEffect(() => {
-    if (currentUser) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser));
-  }, [currentUser]);
-
-  const refreshBalance = async (publicKey) => {
-    if (!publicKey) return;
-    try {
-      const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${publicKey}`);
-      if (res.ok) {
-        const data = await res.json();
-        const xlm = data.balances?.find(b => b.asset_type === 'native')?.balance || '0';
-        setLinkedWallets(prev => prev.map(w => 
-          w.publicKey === publicKey ? { ...w, mainBalance: parseFloat(xlm), allBalances: data.ballets || [] } : w
-        ));
+      if (saved) {
+        const w = JSON.parse(saved);
+        connectWithPrivateKey(w.privateKey);
       }
-    } catch (e) { console.warn('Balance fetch error:', e); }
-  };
+    } catch (e) {}
+  }, []);
 
-  const updateSettings = (s) => { const u = { ...settings, ...s }; setSettings(u); localStorage.setItem(SETTINGS_KEY, JSON.stringify(u)); };
+  // Connect with private key
+  const connectWithPrivateKey = useCallback(async (privateKey) => {
+    if (!provider) return;
+    setIsConnecting(true);
+    setError(null);
 
-  const addWallet = (kp, name, asset = 'XLM') => {
-    const w = buildWalletState(kp, name, asset);
-    setLinkedWallets(prev => [...prev, w]);
-    return w;
-  };
-
-  const removeWallet = (id) => {
-    setLinkedWallets(prev => prev.filter(w => w.id !== id));
-    if (activeWalletId === id) {
-      const rem = linkedWallets.filter(w => w.id !== id);
-      setActiveWalletId(rem.length > 0 ? rem[0].id : null);
-    }
-  };
-
-  const login = async (privateKey, name = 'Mi Billetera') => {
     try {
-      const { Keypair } = await import('@stellar/stellar-sdk');
-      const kp = Keypair.fromSecret(privateKey);
-      const user = { address: kp.publicKey(), name };
-      setCurrentUser(user);
-      const existing = linkedWallets.find(w => w.publicKey === kp.publicKey());
-      if (!existing) addWallet(kp, name);
-      else setActiveWalletId(existing.id);
-      return user;
-    } catch (e) { throw new Error('Clave privada inválida: ' + e.message); }
-  };
+      const s = new ethers.Wallet(privateKey, provider);
+      const address = await s.getAddress();
+      
+      setSigner(s);
+      setWallet({ address, privateKey });
+      
+      // Update contracts with signer
+      const usdc = new ethers.Contract(HSK_TESTNET.contracts.usdc, ERC20_ABI, s);
+      const vault = new ethers.Contract(HSK_TESTNET.contracts.vault, VAULT_ABI, s);
+      const forwarder = new ethers.Contract(HSK_TESTNET.contracts.forwarder, FORWARDER_ABI, s);
 
-  const loginAsDemo = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    let pk = 'G';
-    for (let i = 0; i < 55; i++) pk += chars[Math.floor(Math.random() * 32)];
-    const user = { address: pk, name: 'Demo Wallet' };
-    setCurrentUser(user);
-    return user;
-  };
+      setUsdcContract(usdc);
+      setVaultContract(vault);
+      setForwarderContract(forwarder);
 
-  const logout = () => { setCurrentUser(null); localStorage.removeItem(AUTH_STORAGE_KEY); };
+      // Save to localStorage
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ address, privateKey }));
 
-  // P2P: Create offline payment
-  const createOfflinePayment = async (payee, amount, memo = 'Pago') => {
-    if (!activeWallet) throw new Error('No hay wallet activa');
-    const num = parseFloat(amount);
-    if (isNaN(num) || num <= 0) throw new Error('Monto inválido');
-    
-    const { computeCanonicalTxHash, signWithStellarKey } = await import('../services/stellarCrypto');
-    const nonce = (activeWallet.currentNonce || 0) + 1;
-    const payload = { id: `TX-${nonce}-${Date.now().toString(36).toUpperCase()}`, payer: activeWallet.publicKey, payee, amount: num, asset: activeWallet.asset || 'XLM', nonce, memo, timestamp: Date.now() };
-    const txHash = await computeCanonicalTxHash(payload);
-    const payerSignature = await signWithStellarKey(activeWallet.secretKey, txHash);
-    return { payload, txHash, payerSignature, payeeSignature: null, status: 'PENDING' };
-  };
+      // Refresh balances
+      await refreshBalances(address);
 
-  // P2P: Counter-sign
-  const receiveAndCounterSign = async (tx) => {
-    if (!activeWallet) throw new Error('No hay wallet activa');
-    const { computeCanonicalTxHash, verifyStellarSignature, counterSignPaymentReceipt } = await import('../services/stellarCrypto');
-    const hash = await computeCanonicalTxHash(tx.payload);
-    if (hash !== tx.txHash) throw new Error('Hash inválido');
-    if (!verifyStellarSignature(tx.payload.payer, tx.txHash, tx.payerSignature)) throw new Error('Firma pagador inválida');
-    const payeeSig = await counterSignPaymentReceipt(activeWallet.secretKey, tx.txHash, tx.payerSignature);
-    
-    setLinkedWallets(prev => prev.map(w => {
-      if (w.publicKey === activeWallet.publicKey) return { ...w, receivedOffline: (w.receivedOffline || 0) + tx.payload.amount };
-      if (w.publicKey === tx.payload.payer) return { ...w, spentOffline: (w.spentOffline || 0) + tx.payload.amount };
-      return w;
-    }));
-    
-    const finalized = { ...tx, payeeSignature: payeeSig, status: 'COUNTER_SIGNED' };
-    setTransactions(prev => [finalized, ...prev]);
-    return finalized;
-  };
+      setCurrentUser({ address, name: `${address.slice(0,6)}...${address.slice(-4)}` });
+      console.log('[Wallet] Connected:', address);
+    } catch (e) {
+      console.error('[Wallet] Connect error:', e);
+      setError('Clave privada inválida');
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [provider]);
 
-  // Direct on-chain (for Debug panel)
-  const sendDirect = async (toAddress, amount = '1.0000000', memo = 'DEBUG') => {
-    if (!activeWallet?.secretKey) throw new Error('Requiere clave secreta');
-    const { Horizon, Keypair, TransactionBuilder, Operation, Asset, Networks, Memo } = await import('@stellar/stellar-sdk');
-    const server = new Horizon.Server('https://horizon-testnet.stellar.org');
-    const src = await server.loadAccount(activeWallet.publicKey);
-    const tx = new TransactionBuilder(src, { fee: '100', networkPassphrase: Networks.TESTNET })
-      .addOperation(Operation.payment({ destination: toAddress, asset: Asset.native(), amount }))
-      .addMemo(Memo.text(memo)).setTimeout(60).build();
-    tx.sign(Keypair.fromSecret(activeWallet.secretKey));
-    const result = await server.submitTransaction(tx);
-    await refreshBalance(activeWallet.publicKey);
-    await refreshBalance(toAddress);
-    return result;
-  };
+  // Generate demo wallet
+  const generateDemoWallet = useCallback(async () => {
+    const w = ethers.Wallet.createRandom();
+    await connectWithPrivateKey(w.privateKey);
+    return w.address;
+  }, [connectWithPrivateKey]);
+
+  // Refresh balances
+  const refreshBalances = useCallback(async (address) => {
+    if (!provider || !usdcContract || !vaultContract || !address) return;
+
+    try {
+      // HSK balance
+      const hskBal = await provider.getBalance(address);
+      setHskBalance(parseFloat(ethers.formatEther(hskBal)).toFixed(4));
+
+      // USDC balance
+      const usdcBal = await usdcContract.balanceOf(address);
+      const decimals = await usdcContract.decimals();
+      setUsdcBalance(parseFloat(ethers.formatUnits(usdcBal, decimals)).toFixed(2));
+
+      // Vault balance
+      const vaultBal = await vaultContract.getVault(address);
+      setVaultBalance(ethers.formatEther(vaultBal[1]));
+    } catch (e) {
+      console.warn('[Wallet] Balance refresh error:', e.message);
+    }
+  }, [provider, usdcContract, vaultContract]);
+
+  // Mint MockUSDC (for testing)
+  const mintUSDC = useCallback(async (amount) => {
+    if (!usdcContract || !signer) throw new Error('No conectado');
+    try {
+      const decimals = await usdcContract.decimals();
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      const tx = await usdcContract.mint(await signer.getAddress(), amountUnits);
+      await tx.wait();
+      await refreshBalances(await signer.getAddress());
+      console.log('[Wallet] Minted', amount, 'USDC');
+      return tx.hash;
+    } catch (e) {
+      console.error('[Wallet] Mint error:', e);
+      throw e;
+    }
+  }, [usdcContract, signer, refreshBalances]);
+
+  // Deposit USDC into Vault
+  const depositToVault = useCallback(async (amount) => {
+    if (!usdcContract || !vaultContract || !signer) throw new Error('No conectado');
+    try {
+      const decimals = await usdcContract.decimals();
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      
+      // 1. Approve
+      const approveTx = await usdcContract.approve(HSK_TESTNET.contracts.vault, amountUnits);
+      await approveTx.wait();
+      console.log('[Wallet] Approved', amount, 'USDC');
+
+      // 2. Deposit
+      const depositTx = await vaultContract.depositTokenVault(HSK_TESTNET.contracts.usdc, amountUnits);
+      await depositTx.wait();
+      
+      await refreshBalances(await signer.getAddress());
+      console.log('[Wallet] Deposited', amount, 'USDC to Vault');
+      return depositTx.hash;
+    } catch (e) {
+      console.error('[Wallet] Deposit error:', e);
+      throw e;
+    }
+  }, [usdcContract, vaultContract, signer, refreshBalances]);
+
+  // Withdraw from Vault
+  const withdrawFromVault = useCallback(async (amount) => {
+    if (!vaultContract || !signer) throw new Error('No conectado');
+    try {
+      const amountUnits = ethers.parseEther(amount.toString());
+      const tx = await vaultContract.withdrawVault(amountUnits);
+      await tx.wait();
+      await refreshBalances(await signer.getAddress());
+      return tx.hash;
+    } catch (e) {
+      console.error('[Wallet] Withdraw error:', e);
+      throw e;
+    }
+  }, [vaultContract, signer, refreshBalances]);
+
+  // Send USDC transfer
+  const sendUSDC = useCallback(async (to, amount) => {
+    if (!usdcContract || !signer) throw new Error('No conectado');
+    try {
+      const decimals = await usdcContract.decimals();
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      const tx = await usdcContract.transfer(to, amountUnits);
+      await tx.wait();
+      await refreshBalances(await signer.getAddress());
+      return tx.hash;
+    } catch (e) {
+      console.error('[Wallet] Transfer error:', e);
+      throw e;
+    }
+  }, [usdcContract, signer, refreshBalances]);
+
+  // Gasless meta-transaction (ERC-2771)
+  const sendMetaTransaction = useCallback(async (to, amount) => {
+    if (!forwarderContract || !usdcContract || !signer) throw new Error('No conectado');
+    try {
+      const decimals = await usdcContract.decimals();
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      
+      // Encode transfer call
+      const transferData = usdcContract.interface.encodeFunctionData('transfer', [to, amountUnits]);
+
+      // Get nonce
+      const nonce = await forwarderContract.getNonce(await signer.getAddress());
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+      // EIP-712 domain
+      const domain = {
+        name: 'PollarForwarder',
+        version: '1',
+        chainId: HSK_TESTNET.chainId,
+        verifyingContract: HSK_TESTNET.contracts.forwarder,
+      };
+
+      // EIP-712 types
+      const types = {
+        ForwardRequest: [
+          { name: 'from', type: 'address' },
+          { name: 'to', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'gas', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+          { name: 'data', type: 'bytes' },
+        ],
+      };
+
+      const request = {
+        from: await signer.getAddress(),
+        to: HSK_TESTNET.contracts.usdc,
+        value: 0,
+        gas: 100000,
+        nonce: nonce,
+        deadline: deadline,
+        data: transferData,
+      };
+
+      // Sign meta-transaction
+      const signature = await signer.signTypedData(domain, types, request);
+
+      // Send to relayer
+      const res = await fetch(`${RELAYER_URL}/api/relay/forward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forwardRequest: request, signature }),
+      });
+
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error);
+
+      await refreshBalances(await signer.getAddress());
+      return result.txHash;
+    } catch (e) {
+      console.error('[Wallet] Meta-tx error:', e);
+      throw e;
+    }
+  }, [forwarderContract, usdcContract, signer, refreshBalances]);
+
+  // Disconnect
+  const disconnect = useCallback(() => {
+    setSigner(null);
+    setWallet(null);
+    setCurrentUser(null);
+    localStorage.removeItem(STORAGE_KEY);
+    setUsdcBalance('0');
+    setVaultBalance('0');
+    setHskBalance('0');
+  }, []);
 
   return (
     <WalletContext.Provider value={{
-      currentUser, settings, updateSettings, linkedWallets, activeWallet, activeWalletId, setActiveWalletId,
-      addWallet, removeWallet, transactions, isSyncing, isOnline: isOnline && !isSimulatingOffline,
-      isSimulatingOffline, setIsSimulatingOffline, login, loginAsDemo, logout, refreshBalance,
-      createOfflinePayment, receiveAndCounterSign, sendDirect,
+      // State
+      wallet,
+      currentUser,
+      provider,
+      signer,
+      usdcBalance,
+      vaultBalance,
+      hskBalance,
+      isConnecting,
+      error,
+
+      // Connection
+      connectWithPrivateKey,
+      generateDemoWallet,
+      disconnect,
+
+      // Actions
+      mintUSDC,
+      depositToVault,
+      withdrawFromVault,
+      sendUSDC,
+      sendMetaTransaction,
+      refreshBalances,
+
+      // Constants
+      contracts: HSK_TESTNET.contracts,
+      chainId: HSK_TESTNET.chainId,
     }}>
       {children}
     </WalletContext.Provider>

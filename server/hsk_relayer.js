@@ -24,8 +24,9 @@ const NETWORKS = {
   hskTestnet: {
     name: 'HashKey Chain Testnet',
     chainId: 133,
-    rpcUrl: 'https://hashkeychain-testnet.alt.technology',
-    blockExplorer: 'https://hashkeychain-testnet-explorer.alt.technology',
+    rpcUrl: 'https://testnet.hsk.xyz',
+    blockExplorer: 'https://testnet.hsk.xyz',
+    usdcAddress: '0x788952C55A04F32C4dC26dEd4858f5D6259f2F15',
   },
   hskMainnet: {
     name: 'HashKey Chain Mainnet',
@@ -75,9 +76,15 @@ const getContractAddress = (name, envVar) => {
     const deployFile = path.resolve(__dirname, `../../contracts/evm/deploy_${NETWORK}.json`);
     if (fs.existsSync(deployFile)) {
       const info = JSON.parse(fs.readFileSync(deployFile, 'utf8'));
-      return info.contracts?.[name] || info.contracts?.[`mock${name.toUpperCase()}`];
+      // Map 'usdc' to 'mockUSDC' for testnet deployments
+      if (name === 'usdc' && info.contracts?.mockUSDC) return info.contracts.mockUSDC;
+      return info.contracts?.[name] || '';
     }
   } catch (e) {}
+
+  // 4. Hardcoded fallback for known deployments
+  const HSK_TESTNET_USDC = '0x788952C55A04F32C4dC26dEd4858f5D6259f2F15';
+  if (name === 'usdc' && NETWORK === 'hskTestnet') return HSK_TESTNET_USDC;
   
   return '';
 };
