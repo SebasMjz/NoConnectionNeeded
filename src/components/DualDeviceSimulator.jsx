@@ -49,9 +49,9 @@ export default function DualDeviceSimulator() {
 
   const handleSimulate = async () => {
     setIsProcessing(true);
-    addLog(`[A] Iniciando pago offline de $${simAmount} USDT → Comercio B`, 'info');
+    addLog(`[A] Iniciando pago offline de ${simAmount} ${deviceA.asset} → Comercio B`, 'info');
     try {
-      const tx = await createOfflinePayment(deviceB.stellarAddress || deviceB.publicKey, simAmount, simMemo);
+      const tx = await createOfflinePayment(deviceB.stellarAddress || deviceB.publicKey, simAmount, simMemo, deviceA.asset);
       addLog(`[A] Firma Ed25519 generada: ${tx.payerSignature.substring(0, 14)}...`, 'success');
       addLog(`[P2P] Transmitiendo paquete de datos cifrado por canal offline...`, 'p2p');
       
@@ -114,11 +114,11 @@ export default function DualDeviceSimulator() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
               <span style={{ fontSize: 10, color: 'var(--text-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo Principal</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>${deviceA.mainBalance.toFixed(2)}</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{deviceA.mainBalance.toFixed(2)} {deviceA.asset}</span>
             </div>
             <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--pollar-blue-light)', border: '1px solid rgba(0, 98, 255, 0.2)' }}>
               <span style={{ fontSize: 10, color: 'var(--pollar-blue)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Bóveda Offline</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>${availableOfflineA.toFixed(2)}</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--pollar-blue)', fontFamily: 'var(--font-mono)' }}>{availableOfflineA.toFixed(2)} {deviceA.asset}</span>
             </div>
           </div>
         </div>
@@ -145,11 +145,11 @@ export default function DualDeviceSimulator() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--bg-card-muted)', border: '1px solid var(--border-subtle)' }}>
               <span style={{ fontSize: 10, color: 'var(--text-light)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Saldo Principal</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>${deviceB.mainBalance.toFixed(2)}</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{deviceB.mainBalance.toFixed(2)} {deviceB.asset}</span>
             </div>
             <div style={{ padding: '10px 12px', borderRadius: 14, background: 'var(--color-emerald-bg)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
               <span style={{ fontSize: 10, color: 'var(--color-emerald)', fontWeight: 700, textTransform: 'uppercase', display: 'block' }}>Recibido Offline</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--color-emerald)', fontFamily: 'var(--font-mono)' }}>+${deviceB.receivedOffline.toFixed(2)}</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: 'var(--color-emerald)', fontFamily: 'var(--font-mono)' }}>+{deviceB.receivedOffline.toFixed(2)} {deviceB.asset}</span>
             </div>
           </div>
         </div>

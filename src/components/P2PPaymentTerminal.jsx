@@ -2,43 +2,37 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { generateQrDataUrl } from '../services/stellarCrypto';
 import { getBarcodeService } from '../services/BarcodeService';
+import CryptoSelector from './CryptoSelector';
 import confetti from 'canvas-confetti';
 import {
   QrCode,
   Send,
   ArrowDownLeft,
   ShieldCheck,
-  CheckCircle2,
   AlertTriangle,
   Camera,
   X,
-  Sparkles,
   Bluetooth,
-  Wifi,
-  Nfc,
-  ChevronRight
+  Wallet,
 } from 'lucide-react';
-
-const ICON_MAP = { QrCode, Bluetooth, Nfc, Wifi };
 
 export default function P2PPaymentTerminal({ onOpenTransport }) {
   const {
-    activeDevice,
-    deviceA,
-    deviceB,
+    activeWallet,
     createOfflinePayment,
     receiveAndCounterSign,
-    isOnline
+    isOnline,
+    changeSelectedAsset,
   } = useWallet();
 
-  const [mode, setMode] = useState(activeDevice === 'device_b' ? 'receive' : 'pay');
-  const [payAmount, setPayAmount] = useState('2.50');
-  const [payMemo, setPayMemo] = useState('Compra Offline');
-  const [payeeAddress, setPayeeAddress] = useState(deviceB.publicKey);
+  const [mode, setMode] = useState('pay'); // 'pay' | 'receive'
+  const [payAmount, setPayAmount] = useState('1.00');
+  const [payMemo, setPayMemo] = useState('Pago P2P Offline');
+  const [payeeAddress, setPayeeAddress] = useState('');
   const [paymentQr, setPaymentQr] = useState('');
   const [pendingTx, setPendingTx] = useState(null);
-  const [receiveAmount, setReceiveAmount] = useState('2.50');
-  const [receiveMemo, setReceiveMemo] = useState('Cobro Tienda');
+  const [receiveAmount, setReceiveAmount] = useState('1.00');
+  const [receiveMemo, setReceiveMemo] = useState('Cobro P2P Offline');
   const [invoiceQr, setInvoiceQr] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
   const [handshakeStep, setHandshakeStep] = useState(0);
@@ -51,31 +45,26 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
 
   const barcodeService = useRef(getBarcodeService());
 
-  const availableOffline = deviceA.derivedOffline - deviceA.spentOffline;
+  const availableOffline = activeWallet
+    ? activeWallet.derivedOffline - activeWallet.spentOffline
+    : 0;
   const quickAmounts = ['1.00', '2.50', '5.00', '10.00', '20.00'];
 
-  // Sync payee
+  // Generate Invoice QR for receive mode
   useEffect(() => {
-    if (!payeeAddress || payeeAddress === deviceA.publicKey) {
-      setPayeeAddress(deviceB.publicKey);
-    }
-  }, [deviceB.publicKey, deviceA.publicKey]);
-
-  // Generate Invoice QR
-  useEffect(() => {
-    if (mode === 'receive') {
+    if (mode === 'receive' && activeWallet) {
       generateQrDataUrl({
         type: 'POLLAR_INVOICE',
-        payee: deviceB.publicKey,
+        payee: activeWallet.publicKey,
         amount: parseFloat(receiveAmount) || 0,
-        asset: deviceB.asset,
+        asset: activeWallet.asset,
         memo: receiveMemo,
         timestamp: Date.now(),
       }, '#0062FF').then(setInvoiceQr);
     }
-  }, [mode, receiveAmount, receiveMemo, deviceB.publicKey, deviceB.asset]);
+  }, [mode, receiveAmount, receiveMemo, activeWallet?.publicKey, activeWallet?.asset]);
 
-  // Generate Payment QR
+  // Generate Payment QR when tx created
   useEffect(() => {
     if (pendingTx) {
       generateQrDataUrl({
@@ -85,15 +74,13 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     }
   }, [pendingTx]);
 
-  // Native barcode scan
+  // Scan QR code
   const startScan = async () => {
     setScanError('');
     setFeedback({ type: '', message: '' });
     try {
       const result = await barcodeService.current.scan();
-      if (result) {
-        handleScannedData(result);
-      }
+      if (result) handleScannedData(result);
     } catch (err) {
       if (err.message && !err.message.includes('cancel')) {
         setScanError(err.message || 'Error al escanear');
@@ -109,7 +96,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
       const tx = await createOfflinePayment(payeeAddress, payAmount, payMemo);
       setPendingTx(tx);
       setHandshakeStep(2);
-      setFeedback({ type: 'success', message: '¡Pago firmado! Muestra este QR al comercio para contrafirma.' });
+      setFeedback({ type: 'success', message: '¡Pago firmado! Muestra este QR al cobrador para contrafirma.' });
       if (navigator.vibrate) navigator.vibrate(60);
     } catch (err) {
       setHandshakeStep(0);
@@ -123,23 +110,25 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
       const data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
 
       if (data.type === 'POLLAR_INVOICE') {
+        // Received a payment request — populate pay form
         setPayeeAddress(data.payee);
         setPayAmount(data.amount?.toString() || '1.00');
         setPayMemo(data.memo || 'Pago');
+        if (data.asset) changeSelectedAsset(data.asset);
         setMode('pay');
         setFeedback({ type: 'success', message: `Factura recibida: ${data.amount} ${data.asset}` });
         if (navigator.vibrate) navigator.vibrate([40, 40]);
       } else if (data.type === 'POLLAR_PAYMENT_PAYLOAD' || data.txHash) {
+        // Received a signed payment — counter-sign it
         setHandshakeStep(3);
         const payload = data.tx || data;
-        await receiveAndCounterSign(payload, 'device_b');
-        setFeedback({ type: 'success', message: `¡Pago Bilateral Confirmado! +${payload.payload.amount} ${payload.payload.asset}` });
+        await receiveAndCounterSign(payload);
+        setFeedback({ type: 'success', message: `¡Cobro Confirmado! +${payload.payload.amount} ${payload.payload.asset}` });
         try {
           confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 }, colors: ['#10B981', '#0062FF'] });
           if (navigator.vibrate) navigator.vibrate([60, 40, 80]);
         } catch (e) {}
         setPendingTx(null);
-        setManualInput('');
       } else {
         throw new Error('Formato QR no compatible');
       }
@@ -155,8 +144,8 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     try {
       const tx = parsedPayload.tx;
       setHandshakeStep(3);
-      await receiveAndCounterSign(tx, 'device_b');
-      setFeedback({ type: 'success', message: `¡Pago Bilateral Confirmado! +${tx.payload.amount} ${tx.payload.asset}` });
+      await receiveAndCounterSign(tx);
+      setFeedback({ type: 'success', message: `¡Cobro Confirmado! +${tx.payload.amount} ${tx.payload.asset}` });
       try { confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 }, colors: ['#10B981', '#0062FF'] }); } catch (e) {}
       setShowManualCounterSign(false);
       setManualPayload('');
@@ -187,21 +176,32 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     }
   };
 
-  const onlineStatus = isOnline;
+  // No wallet linked guard
+  if (!activeWallet) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center', padding: '40px 0', textAlign: 'center' }}>
+        <div style={{ width: 64, height: 64, borderRadius: 20, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Wallet size={30} />
+        </div>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-muted)' }}>
+          Vincula una billetera para enviar y recibir pagos offline.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
+
       {/* Online/Offline Banner */}
       <div style={{
-        padding: '8px 14px',
-        borderRadius: 12,
-        background: onlineStatus ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
-        display: 'flex', alignItems: 'center', gap: 8,
-        fontSize: 12, fontWeight: 700,
-        color: onlineStatus ? 'var(--color-emerald)' : 'var(--color-rose)'
+        padding: '8px 14px', borderRadius: 12,
+        background: isOnline ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
+        display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700,
+        color: isOnline ? 'var(--color-emerald)' : 'var(--color-rose)'
       }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: onlineStatus ? 'var(--color-emerald)' : 'var(--color-rose)' }} />
-        {onlineStatus ? 'Online — Conectado a Stellar Testnet' : 'Offline — Modo sin conexión activo'}
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: isOnline ? 'var(--color-emerald)' : 'var(--color-rose)' }} />
+        {isOnline ? 'Online — Conectado a Stellar Testnet' : 'Offline — Modo sin conexión activo'}
       </div>
 
       {/* Mode Tabs */}
@@ -213,7 +213,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
           color: mode === 'pay' ? 'var(--pollar-blue)' : 'var(--text-muted)',
           boxShadow: mode === 'pay' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
         }}>
-          <Send size={16} /> Enviar Pago (A)
+          <Send size={16} /> Enviar Pago
         </button>
         <button onClick={() => { setMode('receive'); setFeedback({ type: '', message: '' }); }} style={{
           flex: 1, padding: '12px 16px', borderRadius: 12, fontSize: 13, fontWeight: 800,
@@ -222,7 +222,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
           color: mode === 'receive' ? 'var(--color-emerald)' : 'var(--text-muted)',
           boxShadow: mode === 'receive' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
         }}>
-          <ArrowDownLeft size={16} /> Terminal Cobrar (B)
+          <ArrowDownLeft size={16} /> Cobrar
         </button>
       </div>
 
@@ -244,30 +244,38 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
         </div>
       )}
 
-      {/* SEND MODE */}
+      {/* ─── SEND MODE ─── */}
       {mode === 'pay' && (
         <div className="pollar-panel">
-          <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
             <div>
               <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Transferir a Destinatario</h3>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                Disponible en Bóveda: <strong style={{ color: 'var(--pollar-blue)' }}>{availableOffline.toFixed(2)} {deviceA.asset}</strong>
+                Disponible en Bóveda: <strong style={{ color: 'var(--pollar-blue)' }}>{availableOffline.toFixed(2)} {activeWallet.asset}</strong>
               </p>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
-              Nonce #{deviceA.currentNonce + 1}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CryptoSelector
+                selectedAsset={activeWallet.asset || 'XLM'}
+                onSelectAsset={(code) => changeSelectedAsset(code)}
+                balances={activeWallet.allBalances || []}
+                compact={true}
+              />
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 8px', borderRadius: 12, fontFamily: 'var(--font-mono)' }}>
+                #{activeWallet.currentNonce + 1}
+              </span>
+            </div>
           </div>
 
-          {/* Scan + Transport Row */}
+          {/* Scan row */}
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={startScan} style={{
               flex: 1, padding: '14px 16px', borderRadius: 16,
-              background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0, 98, 255, 0.25)',
+              background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0,98,255,0.25)',
               color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
-              <Camera size={18} /> Escanear QR
+              <Camera size={18} /> Escanear QR de Factura
             </button>
             {onOpenTransport && (
               <button onClick={onOpenTransport} style={{
@@ -282,7 +290,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
 
           <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Dirección de Destino (Stellar G...)</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>Dirección del Destinatario (G...)</label>
               <input type="text" value={payeeAddress} onChange={(e) => setPayeeAddress(e.target.value)}
                 className="pollar-input" style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }} placeholder="G..." required />
             </div>
@@ -290,8 +298,8 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
             <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--bg-card-muted)', borderRadius: 20, border: '1px solid var(--border-subtle)' }}>
               <span style={{ fontSize: 12, color: 'var(--text-light)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Monto a Enviar</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-1px', lineHeight: 1 }}>${payAmount || '0'}</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>{deviceA.asset}</span>
+                <span style={{ fontSize: 40, fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-1px', lineHeight: 1 }}>{payAmount || '0'}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--pollar-blue)' }}>{activeWallet.asset}</span>
               </div>
             </div>
 
@@ -303,7 +311,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
                   background: payAmount === amt ? 'var(--pollar-blue-light)' : '#FFFFFF',
                   color: payAmount === amt ? 'var(--pollar-blue)' : 'var(--text-muted)',
                 }}>
-                  ${amt}
+                  {amt}
                 </button>
               ))}
             </div>
@@ -313,23 +321,21 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               <input type="text" value={payMemo} onChange={(e) => setPayMemo(e.target.value)} className="pollar-input" />
             </div>
 
-            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-              <button type="submit" disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline} className="pollar-btn-primary" style={{ flex: 1 }}>
-                <QrCode size={18} /> Firmar y Generar QR
-              </button>
-            </div>
+            <button type="submit" disabled={availableOffline <= 0 || parseFloat(payAmount) > availableOffline} className="pollar-btn-primary">
+              <QrCode size={18} /> Firmar y Generar QR
+            </button>
 
             {availableOffline <= 0 && (
-              <div style={{ padding: 14, borderRadius: 14, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', border: '1px solid rgba(244, 63, 94, 0.2)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={18} shrink={0} />
-                <span>Saldo en bóveda agotado. Asigna fondos desde la pestaña Bóveda.</span>
+              <div style={{ padding: 14, borderRadius: 14, background: 'var(--color-rose-bg)', color: 'var(--color-rose)', border: '1px solid rgba(244,63,94,0.2)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={18} />
+                <span>Saldo en bóveda agotado. Asigna fondos desde Bóveda.</span>
               </div>
             )}
           </form>
         </div>
       )}
 
-      {/* PAYMENT QR PRESENTATION */}
+      {/* Payment QR */}
       {pendingTx && paymentQr && mode === 'pay' && (
         <div className="pollar-panel" style={{ border: '2px solid var(--color-emerald)', alignItems: 'center', textAlign: 'center', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--color-emerald)', background: 'var(--color-emerald-bg)', padding: '6px 14px', borderRadius: 20 }}>
@@ -337,31 +343,39 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
           </div>
           <img src={paymentQr} alt="QR Pago" style={{ width: 220, height: 220, borderRadius: 18, background: '#FFFFFF', padding: 12, border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }} />
           <div>
-            <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>${pendingTx.payload.amount} {pendingTx.payload.asset}</span>
+            <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-main)', display: 'block' }}>{pendingTx.payload.amount} {pendingTx.payload.asset}</span>
             <p style={{ fontSize: 12, color: 'var(--color-emerald)', fontWeight: 700, marginTop: 4 }}>
-              Muestra este QR al comercio para que lo escanee y contrafirme
+              Muestra este QR al cobrador para que lo escanee y contrafirme
             </p>
           </div>
         </div>
       )}
 
-      {/* RECEIVE MODE */}
+      {/* ─── RECEIVE MODE ─── */}
       {mode === 'receive' && (
         <div className="pollar-panel">
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ArrowDownLeft size={20} color="var(--color-emerald)" /> Terminal de Cobro POS
-            </h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              Paso 1: Muestra esta factura al cliente → Paso 2: Escanea su pago firmado
-            </p>
+          <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ArrowDownLeft size={20} color="var(--color-emerald)" /> Terminal de Cobro
+              </h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                Genera una factura → Escanea el pago firmado del cliente
+              </p>
+            </div>
+            <CryptoSelector
+              selectedAsset={activeWallet.asset || 'XLM'}
+              onSelectAsset={(code) => changeSelectedAsset(code)}
+              balances={activeWallet.allBalances || []}
+              compact={true}
+            />
           </div>
 
-          {/* Scan + Transport Row */}
+          {/* Scan row */}
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={startScan} style={{
               flex: 1, padding: '14px 16px', borderRadius: 16,
-              background: 'var(--color-emerald-bg)', border: '1.5px solid rgba(16, 185, 129, 0.3)',
+              background: 'var(--color-emerald-bg)', border: '1.5px solid rgba(16,185,129,0.3)',
               color: 'var(--color-emerald)', fontSize: 13, fontWeight: 800,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
@@ -378,21 +392,20 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
             )}
           </div>
 
-          {/* Manual fallback */}
           <button onClick={() => setShowManualCounterSign(true)} style={{
             width: '100%', padding: '14px 16px', borderRadius: 16,
-            background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0, 98, 255, 0.25)',
+            background: 'var(--pollar-blue-light)', border: '1.5px solid rgba(0,98,255,0.25)',
             color: 'var(--pollar-blue)', fontSize: 13, fontWeight: 800,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
             <QrCode size={18} /> Ingresar payload manualmente
           </button>
 
-          {/* Invoice QR Display */}
-          <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--pollar-blue-light)', borderRadius: 20, border: '2px dashed rgba(0, 98, 255, 0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          {/* Invoice QR */}
+          <div style={{ textAlign: 'center', padding: '20px 16px', background: 'var(--pollar-blue-light)', borderRadius: 20, border: '2px dashed rgba(0,98,255,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)' }}>Factura para el cliente</span>
             {invoiceQr && <img src={invoiceQr} alt="Invoice QR" style={{ width: 180, height: 180, borderRadius: 14, background: '#FFFFFF', padding: 10 }} />}
-            <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--pollar-blue)' }}>${receiveAmount} {deviceB.asset}</span>
+            <span style={{ fontSize: 18, fontWeight: 900, color: 'var(--pollar-blue)' }}>{receiveAmount} {activeWallet.asset}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -425,7 +438,7 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
               {parsedPayload && (
                 <div style={{ padding: 12, borderRadius: 14, background: 'var(--color-emerald-bg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--color-emerald)' }}>Payload válido</span>
-                  <span style={{ fontSize: 18, fontWeight: 900 }}>${parsedPayload.tx.payload.amount} {parsedPayload.tx.payload.asset}</span>
+                  <span style={{ fontSize: 18, fontWeight: 900 }}>{parsedPayload.tx.payload.amount} {parsedPayload.tx.payload.asset}</span>
                   <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>De: {parsedPayload.tx.payload.payer?.slice(0, 16)}...</span>
                 </div>
               )}

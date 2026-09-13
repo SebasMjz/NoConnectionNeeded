@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
-  const { deviceA, deviceB, loginWithWallet, linkCustomAccount, requestFriendbotFunding } = useWallet();
+  const { activeWallet, loginWithWallet, linkCustomAccount, requestFriendbotFunding } = useWallet();
   const [activeTab, setActiveTab] = useState('connect');
   const [manualKey, setManualKey] = useState('');
   const [feedback, setFeedback] = useState({ type: '', message: '' });
@@ -39,16 +39,10 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
         setFeedback({ type: 'success', message: 'Albedo conectada' });
       } else if (type === 'generated') {
         const newKeys = generateRealStellarKeypair();
-        await linkCustomAccount(newKeys.secretKey);
+        await linkCustomAccount(newKeys.secretKey, 'Billetera Nueva');
         await loginWithWallet(newKeys.publicKey);
         requestFriendbotFunding(newKeys.publicKey);
         setFeedback({ type: 'success', message: 'Nueva billetera creada (+10k XLM Testnet)' });
-      } else if (type === 'preset_a') {
-        await loginWithWallet(deviceA.publicKey);
-        setFeedback({ type: 'success', message: 'Billetera Pagador A conectada' });
-      } else if (type === 'preset_b') {
-        await loginWithWallet(deviceB.publicKey);
-        setFeedback({ type: 'success', message: 'Billetera Comercio B conectada' });
       }
 
       setTimeout(() => {
@@ -142,6 +136,7 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
         {/* Options View */}
         {activeTab === 'connect' && (
           <div className="space-y-2.5">
+            {/* Connect options */}
             <button
               onClick={() => handleConnectOption('freighter')}
               disabled={!!loadingAction}
@@ -175,28 +170,6 @@ export default function WalletConnectModal({ isOpen, onClose, onConnected }) {
               </div>
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0062FF] transition-all" />
             </button>
-
-            <div className="pt-2">
-              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block mb-2">
-                Billeteras de Prueba Rápidas
-              </span>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => handleConnectOption('preset_a')}
-                  className="p-3 rounded-2xl bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200 text-left transition-all"
-                >
-                  <span className="text-xs font-bold text-[#0062FF] block">Pagador A (100 USDT)</span>
-                  <span className="text-[10px] font-mono text-slate-500 truncate block">{deviceA.publicKey.slice(0, 10)}...</span>
-                </button>
-                <button
-                  onClick={() => handleConnectOption('preset_b')}
-                  className="p-3 rounded-2xl bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-200 text-left transition-all"
-                >
-                  <span className="text-xs font-bold text-emerald-700 block">Comercio B POS</span>
-                  <span className="text-[10px] font-mono text-slate-500 truncate block">{deviceB.publicKey.slice(0, 10)}...</span>
-                </button>
-              </div>
-            </div>
           </div>
         )}
 

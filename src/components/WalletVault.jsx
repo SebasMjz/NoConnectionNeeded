@@ -1,41 +1,36 @@
 import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
+import CryptoSelector from './CryptoSelector';
 import {
   Lock,
-  ArrowRightLeft,
   CheckCircle2,
   Coins,
   RefreshCw,
   Send,
   ArrowDownLeft,
-  Key,
   AlertCircle,
   Clock,
-  ChevronRight,
   Copy,
   Check,
-  Zap,
   Sparkles,
-  ShieldCheck,
-  Store,
-  Plus
+  Plus,
+  Wallet,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const {
-    activeDevice,
-    deviceA,
-    deviceB,
+    activeWallet,
+    linkedWallets,
     allocateOfflineFunds,
     returnFundsToMain,
     refreshOnlineBalance,
     requestFriendbotFunding,
     isRefreshingBalance,
-    transactions
+    transactions,
+    changeSelectedAsset,
+    selectActiveWallet,
   } = useWallet();
-
-  const isMerchant = activeDevice === 'device_b';
-  const currentAccount = isMerchant ? deviceB : deviceA;
 
   const [transferAmount, setTransferAmount] = useState('');
   const [activeAction, setActiveAction] = useState('allocate');
@@ -44,11 +39,39 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [isFunding, setIsFunding] = useState(false);
 
-  const availableInMain = Math.max(0, deviceA.mainBalance - deviceA.derivedOffline);
-  const unspentOffline = Math.max(0, deviceA.derivedOffline - deviceA.spentOffline);
-  const usagePercentage = deviceA.derivedOffline > 0
-    ? Math.min(100, (deviceA.spentOffline / deviceA.derivedOffline) * 100)
-    : 0;
+  // If no wallet linked yet, show onboarding prompt
+  if (!activeWallet) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%', alignItems: 'center', padding: '40px 0' }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: 24,
+          background: 'var(--pollar-blue-light)',
+          color: 'var(--pollar-blue)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Wallet size={38} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-main)', marginBottom: 6 }}>
+            Vincula tu primera billetera
+          </h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 280, margin: '0 auto' }}>
+            Conecta una cuenta Stellar para comenzar a realizar pagos P2P offline.
+          </p>
+        </div>
+        <button
+          onClick={onOpenLinkModal}
+          className="pollar-btn-primary"
+          style={{ minWidth: 220 }}
+        >
+          <Plus size={18} /> Vincular Billetera
+        </button>
+      </div>
+    );
+  }
+
+  const availableInMain = Math.max(0, activeWallet.mainBalance - activeWallet.derivedOffline);
+  const unspentOffline = Math.max(0, activeWallet.derivedOffline - activeWallet.spentOffline);
 
   const recentTxs = transactions.slice(0, 5);
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
@@ -62,10 +85,10 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     try {
       if (activeAction === 'allocate') {
         allocateOfflineFunds(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} bloqueados en Bóveda Offline` });
+        setFeedback({ type: 'success', message: `${transferAmount} ${activeWallet.asset} bloqueados en Bóveda Offline` });
       } else {
         returnFundsToMain(transferAmount);
-        setFeedback({ type: 'success', message: `${transferAmount} ${deviceA.asset} liberados a Billetera Principal` });
+        setFeedback({ type: 'success', message: `${transferAmount} ${activeWallet.asset} liberados a Billetera Principal` });
       }
       setTransferAmount('');
     } catch (err) {
@@ -87,8 +110,8 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
     setIsFunding(true);
     setFeedback({ type: '', message: '' });
     try {
-      await requestFriendbotFunding(currentAccount.publicKey);
-      setFeedback({ type: 'success', message: '¡Recarga Confirmada! +10,000.00 XLM acreditados exitosamente en Stellar Testnet' });
+      await requestFriendbotFunding(activeWallet.publicKey);
+      setFeedback({ type: 'success', message: '¡Recarga Confirmada! +10,000.00 XLM acreditados en Stellar Testnet' });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al conectar con Friendbot' });
     } finally {
@@ -97,7 +120,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   };
 
   const copyAddress = () => {
-    navigator.clipboard.writeText(currentAccount.publicKey);
+    navigator.clipboard.writeText(activeWallet.publicKey);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
   };
@@ -105,43 +128,47 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
 
-      {/* Main Digital eWallet Balance Card */}
-      <div className={`pollar-balance-card ${isMerchant ? 'merchant' : ''}`}>
+      {/* Main Balance Card */}
+      <div className="pollar-balance-card">
         <div className="pollar-card-ambient-circle" />
 
-        {/* Card Top: Tag + Refresh */}
-        <div className="pollar-card-top">
-          <span className="pollar-card-tag">
-            {isMerchant ? 'Terminal POS Comercio' : 'Billetera Principal'}
-          </span>
-
-          <button
-            onClick={() => refreshOnlineBalance(currentAccount.publicKey)}
-            disabled={isRefreshingBalance}
-            className="pollar-card-refresh"
-            title="Actualizar saldo"
-          >
-            <RefreshCw size={15} className={isRefreshingBalance ? 'animate-spin' : ''} />
-          </button>
+        {/* Card Top */}
+        <div className="pollar-card-top" style={{ alignItems: 'center' }}>
+          <span className="pollar-card-tag">{activeWallet.name}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CryptoSelector
+              selectedAsset={activeWallet.asset || 'XLM'}
+              onSelectAsset={(assetCode) => changeSelectedAsset(assetCode)}
+              balances={activeWallet.allBalances || []}
+              compact={true}
+            />
+            <button
+              onClick={() => refreshOnlineBalance(activeWallet.publicKey)}
+              disabled={isRefreshingBalance}
+              className="pollar-card-refresh"
+              title="Actualizar saldo on-chain"
+            >
+              <RefreshCw size={15} className={isRefreshingBalance ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         {/* Balance Amount */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>Saldo Total</span>
+          <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 600 }}>Saldo On-Chain</span>
           <div className="pollar-balance-amount">
-            <span>${currentAccount.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span className="pollar-balance-asset">{currentAccount.asset}</span>
+            <span>{activeWallet.mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+            <span className="pollar-balance-asset">{activeWallet.asset}</span>
           </div>
 
-          {!isMerchant ? (
+          <div className="pollar-card-subline">
+            <span>Libre: <strong>{availableInMain.toFixed(2)} {activeWallet.asset}</strong></span>
+            <span>•</span>
+            <span>Bóveda Offline: <strong>{unspentOffline.toFixed(2)} {activeWallet.asset}</strong></span>
+          </div>
+          {activeWallet.receivedOffline > 0 && (
             <div className="pollar-card-subline">
-              <span>Libre: <strong>{availableInMain.toFixed(2)}</strong></span>
-              <span>•</span>
-              <span>Bóveda Offline: <strong>{unspentOffline.toFixed(2)}</strong></span>
-            </div>
-          ) : (
-            <div className="pollar-card-subline">
-              <span>Cobros Offline: <strong>+{deviceB.receivedOffline.toFixed(2)} {deviceB.asset}</strong></span>
+              <span>Cobros Offline: <strong>+{activeWallet.receivedOffline.toFixed(2)} {activeWallet.asset}</strong></span>
             </div>
           )}
         </div>
@@ -149,12 +176,12 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         {/* Address Pill */}
         <div className="pollar-card-address" onClick={copyAddress}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
-            {currentAccount.publicKey}
+            {activeWallet.publicKey}
           </span>
           {copiedAddress ? <Check size={14} color="#6EE7B7" /> : <Copy size={14} opacity={0.7} />}
         </div>
 
-        {/* 4 Circular Action Buttons */}
+        {/* Action Buttons */}
         <div className="pollar-card-actions">
           <button onClick={() => onNavigate?.('send')} className="pollar-action-btn">
             <div className="pollar-action-icon-circle" style={{ color: 'var(--pollar-blue)' }}>
@@ -186,46 +213,82 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
         </div>
       </div>
 
-      {/* Quick Contacts / Devices (Recent Transfers Row from Figma) */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Transferencias Rápidas</h3>
-        <div className="pollar-transfers-scroll">
-          {/* Add contact */}
-          <button onClick={onOpenLinkModal} className="pollar-transfer-item">
-            <div className="pollar-transfer-circle add">
-              <Plus size={20} />
-            </div>
-            <span className="pollar-transfer-name">Vincular</span>
-          </button>
-
-          {/* Comercio B */}
-          <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
-            <div className="pollar-transfer-circle" style={{ background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', border: '2px solid rgba(16, 185, 129, 0.3)' }}>
-              POS
-            </div>
-            <span className="pollar-transfer-name">Comercio B</span>
-          </button>
-
-          {/* Pagador A */}
-          <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
-            <div className="pollar-transfer-circle" style={{ background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', border: '2px solid rgba(0, 98, 255, 0.3)' }}>
-              P-A
-            </div>
-            <span className="pollar-transfer-name">Pagador A</span>
-          </button>
-
-          {/* Friendbot */}
-          <button onClick={handleFundFriendbot} className="pollar-transfer-item">
-            <div className="pollar-transfer-circle" style={{ background: 'var(--color-amber-bg)', color: 'var(--color-amber)', border: '2px solid rgba(245, 158, 11, 0.3)' }}>
-              ⚡
-            </div>
-            <span className="pollar-transfer-name">Friendbot</span>
-          </button>
+      {/* Read-only warning */}
+      {activeWallet.isReadOnly && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 16,
+          background: 'var(--color-amber-bg)', border: '1px solid rgba(245,158,11,0.3)',
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, fontWeight: 700, color: '#B45309'
+        }}>
+          <AlertTriangle size={16} />
+          <span>Billetera de sólo lectura — importa la clave secreta (S...) para firmar pagos.</span>
         </div>
-      </div>
+      )}
 
-      {/* Offline Vault Allocation Panel (Collapsible) */}
-      {showAllocation && !isMerchant && (
+      {/* Quick Wallet Switcher (if multiple linked) */}
+      {linkedWallets.length > 1 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Mis Billeteras</h3>
+          <div className="pollar-transfers-scroll">
+            <button onClick={onOpenLinkModal} className="pollar-transfer-item">
+              <div className="pollar-transfer-circle add">
+                <Plus size={20} />
+              </div>
+              <span className="pollar-transfer-name">Vincular</span>
+            </button>
+            {linkedWallets.map(w => (
+              <button
+                key={w.id}
+                onClick={() => selectActiveWallet(w.id)}
+                className="pollar-transfer-item"
+              >
+                <div
+                  className="pollar-transfer-circle"
+                  style={{
+                    background: w.id === activeWallet.id ? 'var(--pollar-blue)' : 'var(--pollar-blue-light)',
+                    color: w.id === activeWallet.id ? '#fff' : 'var(--pollar-blue)',
+                    border: w.id === activeWallet.id ? '2px solid var(--pollar-blue)' : '2px solid rgba(0,98,255,0.2)',
+                    fontSize: 11, fontWeight: 900,
+                  }}
+                >
+                  {w.name.slice(0, 2).toUpperCase()}
+                </div>
+                <span className="pollar-transfer-name" style={{ fontSize: 10 }}>{w.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Contacts row (single wallet) */}
+      {linkedWallets.length <= 1 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Acciones Rápidas</h3>
+          <div className="pollar-transfers-scroll">
+            <button onClick={onOpenLinkModal} className="pollar-transfer-item">
+              <div className="pollar-transfer-circle add">
+                <Plus size={20} />
+              </div>
+              <span className="pollar-transfer-name">Vincular</span>
+            </button>
+            <button onClick={() => onNavigate?.('send')} className="pollar-transfer-item">
+              <div className="pollar-transfer-circle" style={{ background: 'var(--color-emerald-bg)', color: 'var(--color-emerald)', border: '2px solid rgba(16,185,129,0.3)' }}>
+                <Send size={16} />
+              </div>
+              <span className="pollar-transfer-name">Pagar</span>
+            </button>
+            <button onClick={handleFundFriendbot} className="pollar-transfer-item">
+              <div className="pollar-transfer-circle" style={{ background: 'var(--color-amber-bg)', color: 'var(--color-amber)', border: '2px solid rgba(245,158,11,0.3)' }}>
+                ⚡
+              </div>
+              <span className="pollar-transfer-name">Friendbot</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Vault Allocation Panel */}
+      {showAllocation && (
         <div className="pollar-panel animate-in fade-in slide-in-from-top-3 duration-200">
           <div className="pollar-panel-header" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -238,7 +301,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
               </div>
             </div>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--pollar-blue)', background: 'var(--pollar-blue-light)', padding: '4px 10px', borderRadius: 20, fontFamily: 'var(--font-mono)' }}>
-              {unspentOffline.toFixed(2)} USDT
+              {unspentOffline.toFixed(2)} {activeWallet.asset}
             </span>
           </div>
 
@@ -246,11 +309,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <button
               onClick={() => { setActiveAction('allocate'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
               style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 10,
-                fontSize: 12,
-                fontWeight: 800,
+                flex: 1, padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                 background: activeAction === 'allocate' ? '#FFFFFF' : 'transparent',
                 color: activeAction === 'allocate' ? 'var(--pollar-blue)' : 'var(--text-muted)',
                 boxShadow: activeAction === 'allocate' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none'
@@ -261,11 +320,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             <button
               onClick={() => { setActiveAction('return'); setTransferAmount(''); setFeedback({ type: '', message: '' }); }}
               style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 10,
-                fontSize: 12,
-                fontWeight: 800,
+                flex: 1, padding: '8px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                 background: activeAction === 'return' ? '#FFFFFF' : 'transparent',
                 color: activeAction === 'return' ? 'var(--color-emerald)' : 'var(--text-muted)',
                 boxShadow: activeAction === 'return' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none'
@@ -288,7 +343,7 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                 style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', paddingRight: 60 }}
               />
               <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)' }}>
-                {deviceA.asset}
+                {activeWallet.asset}
               </span>
             </div>
 
@@ -299,14 +354,9 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                   type="button"
                   onClick={() => handleQuickPercent(pct)}
                   style={{
-                    flex: 1,
-                    padding: '8px 4px',
-                    borderRadius: 12,
-                    background: '#F1F5F9',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--text-muted)'
+                    flex: 1, padding: '8px 4px', borderRadius: 12,
+                    background: '#F1F5F9', fontSize: 12, fontWeight: 800,
+                    fontFamily: 'var(--font-mono)', color: 'var(--text-muted)'
                   }}
                 >
                   {pct * 100}%
@@ -324,13 +374,8 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
             {feedback.message && (
               <div style={{
-                padding: 12,
-                borderRadius: 14,
-                fontSize: 12,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
+                padding: 12, borderRadius: 14, fontSize: 12, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 8,
                 background: feedback.type === 'success' ? 'var(--color-emerald-bg)' : 'var(--color-rose-bg)',
                 color: feedback.type === 'success' ? 'var(--color-emerald)' : 'var(--color-rose)'
               }}>
@@ -344,21 +389,18 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
 
       {/* Pending Sync Banner */}
       {pendingCount > 0 && (
-        <div 
+        <div
           onClick={() => onNavigate?.('sync')}
           style={{
-            padding: 16,
-            borderRadius: 20,
+            padding: 16, borderRadius: 20,
             background: 'var(--color-amber-bg)',
             border: '1px solid rgba(245, 158, 11, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             cursor: 'pointer'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 14, background: 'rgba(245, 158, 11, 0.2)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 14, background: 'rgba(245,158,11,0.2)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Clock size={20} />
             </div>
             <div>
@@ -367,16 +409,16 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
             </div>
           </div>
           <span style={{ fontSize: 14, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#92400E' }}>
-            {totalPending.toFixed(2)} USDT
+            {totalPending.toFixed(2)} {activeWallet.asset}
           </span>
         </div>
       )}
 
-      {/* Latest Transactions List (From Figma Design) */}
+      {/* Latest Transactions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-main)' }}>Últimas Transacciones</h3>
-          <button 
+          <button
             onClick={() => onNavigate?.('sync')}
             style={{ fontSize: 12, fontWeight: 700, color: 'var(--pollar-blue)', background: 'transparent' }}
           >
@@ -410,10 +452,9 @@ export default function WalletVault({ onNavigate, onOpenLinkModal }) {
                     </span>
                   </div>
                 </div>
-
                 <div style={{ textAlign: 'right' }}>
-                  <span className={tx.status === 'SYNCED_ONCHAIN' ? 'pollar-tx-amount-out' : 'pollar-tx-amount-in'} style={{ display: 'block' }}>
-                    -${tx.payload.amount.toFixed(2)}
+                  <span className="pollar-tx-amount-out" style={{ display: 'block' }}>
+                    -{tx.payload.amount.toFixed(2)}
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>{tx.payload.asset}</span>
                 </div>

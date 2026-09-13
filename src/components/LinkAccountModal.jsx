@@ -18,7 +18,7 @@ import {
 
 export default function LinkAccountModal({ isOpen, onClose }) {
   const {
-    deviceA,
+    activeWallet,
     linkCustomAccount,
     refreshOnlineBalance,
     requestFriendbotFunding,
@@ -53,7 +53,7 @@ export default function LinkAccountModal({ isOpen, onClose }) {
     setIsFunding(true);
     setFeedback({ type: '', message: '' });
     try {
-      await requestFriendbotFunding(deviceA.publicKey);
+      await requestFriendbotFunding(activeWallet?.publicKey);
       setFeedback({ 
         type: 'success', 
         message: '¡Recarga Confirmada! +10,000.00 XLM recibidos de Friendbot en Stellar Testnet' 
@@ -84,7 +84,7 @@ export default function LinkAccountModal({ isOpen, onClose }) {
   };
 
   const copyPublicKey = () => {
-    navigator.clipboard.writeText(deviceA.publicKey);
+      navigator.clipboard.writeText(activeWallet?.publicKey || '');
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
   };
@@ -125,10 +125,10 @@ export default function LinkAccountModal({ isOpen, onClose }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Cuenta Activa (Pagador)
+              Cuenta Activa
             </span>
             <button
-              onClick={() => refreshOnlineBalance(deviceA.publicKey)}
+              onClick={() => refreshOnlineBalance(activeWallet?.publicKey)}
               disabled={isRefreshingBalance}
               style={{
                 fontSize: 12,
@@ -148,10 +148,10 @@ export default function LinkAccountModal({ isOpen, onClose }) {
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div>
               <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-                ${deviceA.mainBalance.toFixed(2)}
+                ${(activeWallet?.mainBalance || 0).toFixed(2)}
               </span>
               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--pollar-blue)', marginLeft: 4 }}>
-                {deviceA.asset}
+                {activeWallet?.asset || 'XLM'}
               </span>
             </div>
             <span style={{
@@ -178,7 +178,7 @@ export default function LinkAccountModal({ isOpen, onClose }) {
             border: '1px solid var(--border-subtle)'
           }}>
             <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>
-              {deviceA.publicKey}
+              {activeWallet?.publicKey || ''}
             </span>
             <button onClick={copyPublicKey} style={{ background: 'none', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center' }}>
               {copiedKey ? <Check size={15} color="var(--color-emerald)" /> : <Copy size={15} />}

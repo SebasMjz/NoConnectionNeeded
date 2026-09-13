@@ -135,37 +135,31 @@ export async function fetchRealAccountBalances(publicKey, horizonUrl = 'https://
       asset: b.asset_type === 'native' ? 'XLM' : b.asset_code,
       balance: parseFloat(b.balance),
       issuer: b.asset_issuer || '',
-      isNative: b.asset_type === 'native'
+      isNative: b.asset_type === 'native',
+      limit: b.limit ? parseFloat(b.limit) : null
     }));
 
     const nativeBal = balances.find(b => b.isNative)?.balance || 0;
-    const usdtBal = balances.find(b => b.asset === 'USDT')?.balance || 0;
 
     return {
       success: true,
+      exists: true,
       sequence: account.sequence,
       balances,
-      primaryBalance: usdtBal > 0 ? usdtBal : nativeBal,
-      primaryAsset: usdtBal > 0 ? 'USDT' : 'XLM',
+      primaryBalance: nativeBal,
+      primaryAsset: 'XLM',
       nativeBalance: nativeBal
     };
   } catch (err) {
-    if (err.name === 'NotFoundError' || err.status === 404 || (err.response && err.response.status === 404)) {
-      return {
-        success: false,
-        isNewAccount: true,
-        primaryBalance: 0,
-        primaryAsset: 'XLM',
-        balances: [],
-        message: 'Cuenta no inicializada en el ledger de Stellar.'
-      };
-    }
+    const isNotFound = err.name === 'NotFoundError' || err.status === 404 || (err.response && err.response.status === 404);
     return {
       success: false,
-      error: err.message,
+      exists: !isNotFound,
+      isNewAccount: isNotFound,
       primaryBalance: 0,
       primaryAsset: 'XLM',
-      balances: []
+      balances: [],
+      message: isNotFound ? 'Cuenta no inicializada en el ledger de Stellar.' : err.message
     };
   }
 }
@@ -401,23 +395,17 @@ export async function fundWithFriendbot(publicKey) {
 }
 
 /**
- * Loads an account from Horizon with auto-funding and retries
+ * Loads an account from Horizon with validation
  */
 export async function loadOrCreateAccount(server, publicKey) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      return await server.loadAccount(publicKey);
-    } catch (e) {
-      if (attempt === 0) {
-        console.log(`[Stellar Testnet] Creando y fondeando cuenta ${publicKey.substring(0, 10)}...`);
-        await fundWithFriendbot(publicKey);
-      }
-      // Wait for ledger closing (typically 3-4s on Stellar)
-      await new Promise(r => setTimeout(r, 3000));
+  try {
+    return await server.loadAccount(publicKey);
+  } catch (err) {
+    if (err.name === 'NotFoundError' || err.status === 404 || (err.response && err.response.status === 404)) {
+      throw new Error(`La cuenta ${publicKey} no existe en Stellar Testnet. Fondea la cuenta con Friendbot primero.`);
     }
+    throw err;
   }
-  // Final attempt
-  return await server.loadAccount(publicKey);
 }
 
 /**
@@ -428,17 +416,60 @@ export async function submitRealStellarBatchTransaction({
   payerPublicKey,
   payeePublicKey,
   amount,
+  assetCode = 'XLM',
+  assetIssuer = '',
   merkleRootHash,
   horizonUrl = 'https://horizon-testnet.stellar.org'
 }) {
   const { Horizon, TransactionBuilder, Operation, Asset, Memo, Networks, Keypair } = await import('@stellar/stellar-sdk');
   const server = new Horizon.Server(horizonUrl);
 
-  console.log('[Stellar Testnet] Verificando cuenta pagadora:', payerPublicKey);
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    throw new Error(`Monto inválido para liquidación on-chain: ${amount}`);
+  }
+  const txAmount = numAmount.toFixed(7);
+
+  console.log('[Stellar Testnet] Cargando cuenta pagadora:', payerPublicKey);
   const sourceAccount = await loadOrCreateAccount(server, payerPublicKey);
 
-  console.log('[Stellar Testnet] Verificando cuenta cobradora:', payeePublicKey);
-  await loadOrCreateAccount(server, payeePublicKey);
+  // Determine asset
+  const isNative = !assetCode || assetCode === 'XLM' || assetCode === 'native';
+  let targetAsset;
+  if (isNative) {
+    targetAsset = Asset.native();
+  } else {
+    if (!assetIssuer) {
+      const trustline = sourceAccount.balances.find(b => b.asset_code === assetCode);
+      if (trustline && trustline.asset_issuer) {
+        targetAsset = new Asset(assetCode, trustline.asset_issuer);
+      } else {
+        throw new Error(`No se encontró el emisor (issuer) para el token ${assetCode} en la cuenta.`);
+      }
+    } else {
+      targetAsset = new Asset(assetCode, assetIssuer);
+    }
+  }
+
+  // Check payer on-chain balance
+  const payerBalanceObj = sourceAccount.balances.find(b => 
+    isNative ? b.asset_type === 'native' : b.asset_code === assetCode
+  );
+  const payerBalance = payerBalanceObj ? parseFloat(payerBalanceObj.balance) : 0;
+  if (payerBalance < numAmount) {
+    throw new Error(`Saldo insuficiente en Stellar Testnet: Tienes ${payerBalance.toFixed(7)} ${assetCode} y requieres transferir ${txAmount} ${assetCode}.`);
+  }
+
+  // Check destination account
+  console.log('[Stellar Testnet] Verificando cuenta receptora:', payeePublicKey);
+  let payeeExists = true;
+  try {
+    await server.loadAccount(payeePublicKey);
+  } catch (err) {
+    if (err.name === 'NotFoundError' || err.status === 404 || (err.response && err.response.status === 404)) {
+      payeeExists = false;
+    }
+  }
 
   // Prepare memo hash (32-byte Merkle root)
   let memoObj;
@@ -452,20 +483,36 @@ export async function submitRealStellarBatchTransaction({
     memoObj = Memo.text('POLLAR_OFFLINE_BATCH');
   }
 
-  // Amount in native XLM
-  const txAmount = Math.max(0.1, parseFloat(amount) || 1.0).toFixed(7);
-
-  const transaction = new TransactionBuilder(sourceAccount, {
+  const txBuilder = new TransactionBuilder(sourceAccount, {
     fee: '100',
     networkPassphrase: Networks.TESTNET
-  })
-    .addOperation(
+  });
+
+  if (!payeeExists) {
+    if (isNative) {
+      if (numAmount < 1.0) {
+        throw new Error(`La cuenta receptora no está inicializada en Stellar y el monto (${txAmount} XLM) es inferior al mínimo requerido para activarla (1.0 XLM).`);
+      }
+      txBuilder.addOperation(
+        Operation.createAccount({
+          destination: payeePublicKey,
+          startingBalance: txAmount
+        })
+      );
+    } else {
+      throw new Error(`La cuenta receptora no existe en Stellar y no puede recibir tokens ${assetCode} sin antes haber sido creada y haber establecido una línea de confianza (trustline).`);
+    }
+  } else {
+    txBuilder.addOperation(
       Operation.payment({
         destination: payeePublicKey,
-        asset: Asset.native(),
+        asset: targetAsset,
         amount: txAmount
       })
-    )
+    );
+  }
+
+  const transaction = txBuilder
     .addMemo(memoObj)
     .setTimeout(60)
     .build();
@@ -482,6 +529,8 @@ export async function submitRealStellarBatchTransaction({
     success: true,
     hash: result.hash,
     ledger: result.ledger,
+    amount: txAmount,
+    asset: assetCode,
     merkleRoot: merkleRootHash,
     stellarExpertUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`
   };

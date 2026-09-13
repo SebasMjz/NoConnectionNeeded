@@ -24,7 +24,8 @@ export default function SyncManager() {
     isOnline, 
     syncToStellarNetwork, 
     isSyncing, 
-    lastSyncResult 
+    lastSyncResult,
+    activeWallet
   } = useWallet();
 
   const [feedback, setFeedback] = useState({ type: '', message: '' });
@@ -34,11 +35,12 @@ export default function SyncManager() {
   const pendingTxs = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN');
   const syncedTxs = transactions.filter(t => t.status === 'SYNCED_ONCHAIN');
   const totalPending = pendingTxs.reduce((acc, t) => acc + t.payload.amount, 0);
+  const displayAsset = pendingTxs[0]?.payload?.asset || activeWallet?.asset || 'XLM';
 
   const handleSync = async () => {
     setFeedback({ type: '', message: '' });
     try {
-      const res = await syncToStellarNetwork('USER_MANUAL_CLICK');
+      const res = await syncToStellarNetwork();
       setFeedback({ type: 'success', message: `Lote sincronizado con éxito en Stellar Ledger #${res.stellarLedger || 'Testnet'}` });
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al sincronizar lote en Stellar' });
@@ -73,7 +75,7 @@ export default function SyncManager() {
             {pendingTxs.length}
           </div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
-            ${totalPending.toFixed(2)} USDT offline
+            {totalPending.toFixed(2)} {displayAsset} offline
           </span>
         </div>
 
