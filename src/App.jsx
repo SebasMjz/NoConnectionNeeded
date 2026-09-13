@@ -34,34 +34,33 @@ function AppContent() {
   const [isWalletRegistryOpen, setIsWalletRegistryOpen] = useState(false);
   const [isTransportOpen, setIsTransportOpen] = useState(false);
 
-
   const {
     currentUser,
     logout,
-    activeDevice,
-    setActiveDevice,
+    role,
+    setRole,
     isOnline,
     isSimulatingOffline,
     setIsSimulatingOffline,
     transactions,
     resetDemoData,
-    deviceA,
-    deviceB,
+    wallet,
     requestFriendbotFunding,
     pendingTx
   } = useWallet();
+
+  const isPayer = role === 'payer';
 
   // If user is not authenticated, show the Login Gateway
   if (!currentUser) {
     return <AuthGateway onLoginSuccess={() => setActiveTab('home')} />;
   }
 
-  const currentAccount = activeDevice === 'device_b' ? deviceB : deviceA;
   const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
 
   const tabs = [
     { id: 'home', label: 'Bóveda', icon: Wallet },
-    { id: 'send', label: 'Transferir', icon: Send },
+    { id: 'send', label: isPayer ? 'Pagar' : 'Cobrar', icon: isPayer ? Send : ArrowRightLeft },
     { id: 'sync', label: 'Sincronizar', icon: RefreshCw },
     { id: 'lab', label: 'Simulador', icon: Layers },
   ];
@@ -72,19 +71,18 @@ function AppContent() {
       {/* Top Header */}
       <header className="pollar-header">
         <div className="pollar-user-pill">
-          {/* Official Pollar Bear Brand Badge */}
           <div 
             style={{ 
               width: 42, 
               height: 42, 
               borderRadius: 14, 
-              background: '#EEF5FF', 
-              border: '1.5px solid rgba(0, 98, 255, 0.18)', 
+              background: isPayer ? '#EEF5FF' : '#ECFDF5',
+              border: `1.5px solid ${isPayer ? 'rgba(0, 98, 255, 0.18)' : 'rgba(16, 185, 129, 0.18)'}`,
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
               flexShrink: 0,
-              boxShadow: '0 2px 8px rgba(0, 98, 255, 0.1)'
+              boxShadow: `0 2px 8px ${isPayer ? 'rgba(0, 98, 255, 0.1)' : 'rgba(16, 185, 129, 0.1)'}`
             }}
           >
             <PollarLogo size={26} showText={false} />
@@ -98,11 +96,8 @@ function AppContent() {
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--pollar-blue)', letterSpacing: '-0.2px' }}>
-                pollar pay
-              </span>
-              <span style={{ fontSize: 9, fontWeight: 800, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
-                TESTNET
+              <span style={{ fontSize: 10, fontWeight: 800, background: isPayer ? 'var(--pollar-blue-light)' : 'var(--color-emerald-bg)', color: isPayer ? 'var(--pollar-blue)' : 'var(--color-emerald)', padding: '2px 8px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
+                {isPayer ? 'PAGADOR (A)' : 'COMERCIO (B)'}
               </span>
             </div>
           </div>
@@ -136,25 +131,39 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Role Switcher Pill */}
-      <div className="pollar-role-bar">
-        <div className="pollar-role-container">
+      {/* Role Switcher */}
+      <div style={{ padding: '12px 20px 0 20px' }}>
+        <div style={{ display: 'flex', background: '#EBF0F7', padding: 4, borderRadius: 16, gap: 4 }}>
           <button
-            onClick={() => setActiveDevice('device_a')}
-            className={`pollar-role-tab ${activeDevice === 'device_a' ? 'active-payer' : ''}`}
+            onClick={() => setRole('payer')}
+            style={{
+              flex: 1, padding: '9px 12px', borderRadius: 12, fontSize: 13, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: isPayer ? '#FFFFFF' : 'transparent',
+              color: isPayer ? 'var(--pollar-blue)' : 'var(--text-muted)',
+              boxShadow: isPayer ? '0 2px 8px rgba(0, 98, 255, 0.15)' : 'none',
+              border: 'none', cursor: 'pointer'
+            }}
           >
             <Zap size={15} /> Pagador (A)
           </button>
           <button
-            onClick={() => setActiveDevice('device_b')}
-            className={`pollar-role-tab ${activeDevice === 'device_b' ? 'active-merchant' : ''}`}
+            onClick={() => setRole('merchant')}
+            style={{
+              flex: 1, padding: '9px 12px', borderRadius: 12, fontSize: 13, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: !isPayer ? '#FFFFFF' : 'transparent',
+              color: !isPayer ? 'var(--color-emerald)' : 'var(--text-muted)',
+              boxShadow: !isPayer ? '0 2px 8px rgba(16, 185, 129, 0.15)' : 'none',
+              border: 'none', cursor: 'pointer'
+            }}
           >
-            <ArrowRightLeft size={15} /> Comercio POS (B)
+            <ArrowRightLeft size={15} /> Comercio (B)
           </button>
         </div>
       </div>
 
-      {/* Main Content Area with Bottom Clearance */}
+      {/* Main Content Area */}
       <main className="pollar-main-content">
         {activeTab === 'home' && (
           <WalletVault 
@@ -166,7 +175,7 @@ function AppContent() {
         {activeTab === 'sync' && <SyncManager />}
         {activeTab === 'lab' && <DualDeviceSimulator />}
 
-        {/* Safe Bottom Clearance Spacer so content is never covered by bottom nav */}
+        {/* Safe Bottom Clearance Spacer */}
         <div style={{ height: 60, width: '100%', flexShrink: 0 }} />
       </main>
 
@@ -233,14 +242,10 @@ function AppContent() {
   );
 }
 
-import ErrorBoundary from './components/ErrorBoundary';
-
 export default function App() {
   return (
-    <ErrorBoundary>
-      <WalletProvider>
-        <AppContent />
-      </WalletProvider>
-    </ErrorBoundary>
+    <WalletProvider>
+      <AppContent />
+    </WalletProvider>
   );
 }

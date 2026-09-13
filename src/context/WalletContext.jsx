@@ -15,20 +15,21 @@ import confetti from 'canvas-confetti';
 const WalletContext = createContext();
 
 const STORAGE_KEY = 'pollar_offline_wallet_v2_real';
-
 const AUTH_STORAGE_KEY = 'pollar_auth_user';
 const USERS_STORAGE_KEY = 'pollar_users';
 const SETTINGS_KEY = 'pollar_settings';
 const BIOMETRIC_CREDS_KEY = 'pollar_biometric_creds';
 
 export function WalletProvider({ children }) {
-  // Device Selection: 'device_a' (Payer) | 'device_b' (Payee/Merchant) | 'dual_sim' (Split View)
-  const [activeDevice, setActiveDevice] = useState('device_a');
+  // Role: 'payer' (Pagador A) | 'merchant' (Comercio B)
+  const [role, setRole] = useState(() => {
+    return localStorage.getItem('pollar_role') || 'payer';
+  });
   
   // Real or Simulated Network Connectivity
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isSimulatingOffline, setIsSimulatingOffline] = useState(false);
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false); // Purely local by default
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 
   // Authentication & User Session
   const [currentUser, setCurrentUser] = useState(() => {
@@ -52,32 +53,38 @@ export function WalletProvider({ children }) {
 
   const [pendingTx, setPendingTx] = useState(null);
 
-  // Device A (Payer) Wallet State with genuine Stellar Ed25519 Keys
-  const [deviceA, setDeviceA] = useState(() => {
-    // Generate real Stellar keypair if none saved
+  // Single wallet per device - role determines behavior
+  const [wallet, setWallet] = useState(() => {
     const keys = generateRealStellarKeypair();
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.secretKey && parsed.secretKey.startsWith('S')) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
     return {
-      name: 'Billetera Principal (Pagador A)',
-      publicKey: keys.publicKey,     // Genuine Stellar G...
-      secretKey: keys.secretKey,     // Genuine Stellar S...
+      name: 'Mi Billetera',
+      publicKey: keys.publicKey,
+      secretKey: keys.secretKey,
       asset: 'USDT',
-      mainBalance: 100.0,
-      derivedOffline: 10.0,         // 10.00 USDT allocated for offline vault
-      spentOffline: 0.0,
+      mainBalance: role === 'payer' ? 100.0 : 25.0,
+      offlineBalance: role === 'payer' ? 10.0 : 0.0,
+      receivedOffline: 0.0,
       currentNonce: 0,
     };
   });
 
-  // Device B (Payee / Merchant) Wallet State with genuine Stellar Ed25519 Keys
-  const [deviceB, setDeviceB] = useState(() => {
+  // Counterpart wallet info (the other party in the transaction)
+  const [counterpartWallet, setCounterpartWallet] = useState(() => {
     const keys = generateRealStellarKeypair();
     return {
-      name: 'Terminal Comercio (Cobrador B)',
-      publicKey: keys.publicKey,     // Genuine Stellar G...
-      secretKey: keys.secretKey,     // Genuine Stellar S...
+      name: role === 'payer' ? 'Comercio (B)' : 'Pagador (A)',
+      publicKey: keys.publicKey,
+      secretKey: keys.secretKey,
       asset: 'USDT',
-      mainBalance: 25.0,
-      receivedOffline: 0.0,
     };
   });
 
@@ -93,34 +100,24 @@ export function WalletProvider({ children }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
 
+  // Save role to localStorage
+  useEffect(() => {
+    localStorage.setItem('pollar_role', role);
+  }, [role]);
+
   // Load from localStorage with validation
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.deviceA && parsed.deviceA.secretKey && parsed.deviceA.secretKey.startsWith('S')) {
-          setDeviceA(parsed.deviceA);
-        } else {
-          setDeviceA(prev => ({ ...prev, ...generateRealStellarKeypair() }));
+        if (parsed.secretKey && parsed.secretKey.startsWith('S')) {
+          setWallet(parsed);
         }
-
-        if (parsed.deviceB && parsed.deviceB.secretKey && parsed.deviceB.secretKey.startsWith('S')) {
-          setDeviceB(parsed.deviceB);
-        } else {
-          setDeviceB(prev => ({ ...prev, ...generateRealStellarKeypair() }));
-        }
-
         if (parsed.transactions) setTransactions(parsed.transactions);
       } catch (e) {
         console.error('Failed to load saved state:', e);
       }
-    } else {
-      // Ensure real Stellar keys exist from the start
-      const keysA = generateRealStellarKeypair();
-      const keysB = generateRealStellarKeypair();
-      setDeviceA(prev => ({ ...prev, publicKey: keysA.publicKey, secretKey: keysA.secretKey }));
-      setDeviceB(prev => ({ ...prev, publicKey: keysB.publicKey, secretKey: keysB.secretKey }));
     }
 
     const handleOnline = () => setIsOnline(true);
@@ -141,7 +138,7 @@ export function WalletProvider({ children }) {
 
   // Fetch real on-chain balance from Horizon Testnet
   const refreshOnlineBalance = async (targetPubKey = null) => {
-    const pubKey = targetPubKey || deviceA.publicKey;
+    const pubKey = targetPubKey || wallet.publicKey;
     if (!pubKey) return;
     setIsRefreshingBalance(true);
 
@@ -151,23 +148,12 @@ export function WalletProvider({ children }) {
       const res = await fetchRealAccountBalances(pubKey, horizonUrl);
 
       if (res.success) {
-        // Update whichever device matches this pubkey
-        if (pubKey === deviceA.publicKey) {
-          setDeviceA(prev => ({
-            ...prev,
-            mainBalance: res.primaryBalance,
-            asset: res.primaryAsset,
-            allBalances: res.balances
-          }));
-        }
-        if (pubKey === deviceB.publicKey) {
-          setDeviceB(prev => ({
-            ...prev,
-            mainBalance: res.primaryBalance,
-            asset: res.primaryAsset,
-            allBalances: res.balances
-          }));
-        }
+        setWallet(prev => ({
+          ...prev,
+          mainBalance: res.primaryBalance,
+          asset: res.primaryAsset,
+          allBalances: res.balances
+        }));
       }
       setIsRefreshingBalance(false);
       return res;
@@ -179,17 +165,17 @@ export function WalletProvider({ children }) {
 
   // Auto-fetch balance on mount if online
   useEffect(() => {
-    if (effectiveOnline && deviceA.publicKey) {
-      refreshOnlineBalance(deviceA.publicKey);
+    if (effectiveOnline && wallet.publicKey) {
+      refreshOnlineBalance(wallet.publicKey);
     }
-  }, [deviceA.publicKey, effectiveOnline]);
+  }, [wallet.publicKey, effectiveOnline]);
 
   // Link any custom Stellar account (S... or G...)
   const linkCustomAccount = async (inputKey) => {
     const { importStellarAccount } = await import('../services/stellarCrypto');
     const imported = importStellarAccount(inputKey);
 
-    setDeviceA(prev => ({
+    setWallet(prev => ({
       ...prev,
       publicKey: imported.publicKey,
       secretKey: imported.secretKey || prev.secretKey,
@@ -206,7 +192,7 @@ export function WalletProvider({ children }) {
 
   // Fund with Friendbot on Testnet (+10,000 XLM)
   const requestFriendbotFunding = async (pubKey = null) => {
-    const target = pubKey || deviceA.publicKey;
+    const target = pubKey || wallet.publicKey;
     const { fundWithFriendbot } = await import('../services/stellarCrypto');
     const res = await fundWithFriendbot(target);
     await new Promise(r => setTimeout(r, 2000));
@@ -233,12 +219,11 @@ export function WalletProvider({ children }) {
   // Save to localStorage
   useEffect(() => {
     const state = {
-      deviceA,
-      deviceB,
+      ...wallet,
       transactions,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [deviceA, deviceB, transactions]);
+  }, [wallet, transactions]);
 
   // Recalculate real Merkle Tree whenever transactions change
   useEffect(() => {
@@ -252,14 +237,14 @@ export function WalletProvider({ children }) {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) throw new Error('Ingresa un monto válido mayor a 0');
     
-    const availableInMain = deviceA.mainBalance - deviceA.derivedOffline;
+    const availableInMain = wallet.mainBalance - wallet.offlineBalance;
     if (num > availableInMain) {
-      throw new Error(`Saldo insuficiente en Billetera Principal. Disponible: ${availableInMain.toFixed(2)} ${deviceA.asset}`);
+      throw new Error(`Saldo insuficiente en Billetera Principal. Disponible: ${availableInMain.toFixed(2)} ${wallet.asset}`);
     }
 
-    setDeviceA(prev => ({
+    setWallet(prev => ({
       ...prev,
-      derivedOffline: prev.derivedOffline + num
+      offlineBalance: prev.offlineBalance + num
     }));
   };
 
@@ -268,34 +253,34 @@ export function WalletProvider({ children }) {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) throw new Error('Ingresa un monto válido mayor a 0');
 
-    const unspentOffline = deviceA.derivedOffline - deviceA.spentOffline;
+    const unspentOffline = wallet.offlineBalance;
     if (num > unspentOffline) {
-      throw new Error(`No puedes devolver más del saldo offline libre: ${unspentOffline.toFixed(2)} ${deviceA.asset}`);
+      throw new Error(`No puedes devolver más del saldo offline libre: ${unspentOffline.toFixed(2)} ${wallet.asset}`);
     }
 
-    setDeviceA(prev => ({
+    setWallet(prev => ({
       ...prev,
-      derivedOffline: prev.derivedOffline - num
+      offlineBalance: prev.offlineBalance - num
     }));
   };
 
-  // 3. Create & Sign Real Offline Payment (Payer / Device A)
+  // 3. Create & Sign Real Offline Payment (Payer)
   const createOfflinePayment = async (payeeAddress, amount, memo = 'Pago Offline Pollar') => {
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) throw new Error('El monto debe ser mayor a 0');
 
-    const availableOffline = deviceA.derivedOffline - deviceA.spentOffline;
+    const availableOffline = wallet.offlineBalance;
     if (num > availableOffline) {
-      throw new Error(`Límite Offline excedido: Tienes ${availableOffline.toFixed(2)} ${deviceA.asset} disponibles offline e intentas pagar ${num.toFixed(2)} ${deviceA.asset}. Transfiere más saldo a tu bóveda.`);
+      throw new Error(`Límite Offline excedido: Tienes ${availableOffline.toFixed(2)} ${wallet.asset} disponibles offline e intentas pagar ${num.toFixed(2)} ${wallet.asset}. Transfiere más saldo a tu bóveda.`);
     }
 
-    const nextNonce = deviceA.currentNonce + 1;
+    const nextNonce = wallet.currentNonce + 1;
     const payload = {
       id: `TX-OFFLINE-${nextNonce}-${Date.now().toString(36).toUpperCase()}`,
-      payer: deviceA.publicKey,
-      payee: payeeAddress || deviceB.publicKey,
+      payer: wallet.publicKey,
+      payee: payeeAddress || counterpartWallet.publicKey,
       amount: num,
-      asset: deviceA.asset,
+      asset: wallet.asset,
       nonce: nextNonce,
       memo: memo,
       timestamp: Date.now(),
@@ -305,7 +290,7 @@ export function WalletProvider({ children }) {
     const txHash = await computeCanonicalTxHash(payload);
 
     // 2. Real Ed25519 signature with Payer's secret key
-    const payerSignature = await signWithStellarKey(deviceA.secretKey, txHash);
+    const payerSignature = await signWithStellarKey(wallet.secretKey, txHash);
 
     const newTx = {
       payload,
@@ -321,7 +306,7 @@ export function WalletProvider({ children }) {
   };
 
   // 4. Payee processes, validates signature, counter-signs, and stores in Merkle Tree
-  const receiveAndCounterSign = async (pendingTx, submitterDevice = 'device_b') => {
+  const receiveAndCounterSign = async (pendingTx, submitterDevice = 'merchant') => {
     if (!pendingTx || !pendingTx.txHash || !pendingTx.payerSignature) {
       throw new Error('Payload de pago inválido o corrupto');
     }
@@ -344,7 +329,7 @@ export function WalletProvider({ children }) {
 
     // 3. Payee creates genuine Ed25519 Counter-Signature
     const payeeSignature = await counterSignPaymentReceipt(
-      deviceB.secretKey,
+      wallet.secretKey,
       pendingTx.txHash,
       pendingTx.payerSignature
     );
@@ -360,20 +345,13 @@ export function WalletProvider({ children }) {
     const leafHash = await computeMerkleLeafHash(finalizedTx);
     finalizedTx.merkleLeafHash = leafHash;
 
-    // 5. Update Payer Vault (Local Discount)
-    setDeviceA(prev => ({
-      ...prev,
-      spentOffline: prev.spentOffline + pendingTx.payload.amount,
-      currentNonce: Math.max(prev.currentNonce, pendingTx.payload.nonce),
-    }));
-
-    // 6. Update Payee Balance
-    setDeviceB(prev => ({
+    // 5. Update Payee Balance (ADD to receivedOffline)
+    setWallet(prev => ({
       ...prev,
       receivedOffline: prev.receivedOffline + pendingTx.payload.amount,
     }));
 
-    // 7. Add to transaction list
+    // 6. Add to transaction list
     setTransactions(prev => [finalizedTx, ...prev]);
 
     // Clear pendingTx after successful counter-sign
@@ -408,15 +386,15 @@ export function WalletProvider({ children }) {
       // Broadcast directly to Stellar Testnet Horizon with Merkle Root in Memo
       const { submitRealStellarBatchTransaction } = await import('../services/stellarCrypto');
       const realTxResult = await submitRealStellarBatchTransaction({
-        payerSecretKey: deviceA.secretKey,
-        payerPublicKey: deviceA.publicKey,
-        payeePublicKey: deviceB.publicKey,
+        payerSecretKey: wallet.secretKey,
+        payerPublicKey: wallet.publicKey,
+        payeePublicKey: counterpartWallet.publicKey,
         amount: totalSyncedAmount > 0 ? totalSyncedAmount : 1.0,
         merkleRootHash: merkleTree.rootHash || '0000000000000000000000000000000000000000000000000000000000000000',
         horizonUrl: import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       });
 
-      const currentSubmitter = activeDevice === 'device_b' ? 'Dispositivo B (Comercio)' : 'Dispositivo A (Pagador)';
+      const currentSubmitter = role === 'merchant' ? 'Comercio (B)' : 'Pagador (A)';
 
       setTransactions(prev => prev.map(tx => {
         if (tx.status !== 'SYNCED_ONCHAIN') {
@@ -432,18 +410,20 @@ export function WalletProvider({ children }) {
         return tx;
       }));
 
-      setDeviceA(prev => ({
-        ...prev,
-        mainBalance: Math.max(0, prev.mainBalance - totalSyncedAmount),
-        derivedOffline: Math.max(0, prev.derivedOffline - totalSyncedAmount),
-        spentOffline: Math.max(0, prev.spentOffline - totalSyncedAmount),
-      }));
-
-      setDeviceB(prev => ({
-        ...prev,
-        mainBalance: prev.mainBalance + totalSyncedAmount,
-        receivedOffline: Math.max(0, prev.receivedOffline - totalSyncedAmount),
-      }));
+      // Update wallet balances after sync
+      if (role === 'payer') {
+        setWallet(prev => ({
+          ...prev,
+          mainBalance: Math.max(0, prev.mainBalance - totalSyncedAmount),
+          offlineBalance: Math.max(0, prev.offlineBalance - totalSyncedAmount),
+        }));
+      } else {
+        setWallet(prev => ({
+          ...prev,
+          mainBalance: prev.mainBalance + totalSyncedAmount,
+          receivedOffline: Math.max(0, prev.receivedOffline - totalSyncedAmount),
+        }));
+      }
 
       const result = {
         success: true,
@@ -462,8 +442,7 @@ export function WalletProvider({ children }) {
 
       // Refresh on-chain balances for both devices after sync
       if (effectiveOnline) {
-        await refreshOnlineBalance(deviceA.publicKey);
-        await refreshOnlineBalance(deviceB.publicKey);
+        await refreshOnlineBalance(wallet.publicKey);
       }
 
       return result;
@@ -481,7 +460,8 @@ export function WalletProvider({ children }) {
       email: cleanEmail,
       name: cleanEmail.split('@')[0],
       provider: 'email',
-      role: 'device_a',
+      role: role,
+      publicKey: wallet.publicKey,
       connectedAt: Date.now()
     };
     setCurrentUser(user);
@@ -552,11 +532,11 @@ export function WalletProvider({ children }) {
     const email = customEmail || 'usuario.pollar@gmail.com';
     const user = {
       id: 'usr_g_' + Math.random().toString(36).substring(2, 9),
-      email,
+      email: email,
       name: customEmail ? customEmail.split('@')[0] : 'Demo Google User',
       provider: 'google',
       avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
-      role: 'device_a',
+      role: role,
       connectedAt: Date.now()
     };
     setCurrentUser(user);
@@ -564,19 +544,18 @@ export function WalletProvider({ children }) {
     return user;
   };
 
-  const loginWithWallet = async (inputKey = null) => {
-    let importedPub = deviceA.publicKey;
-    if (inputKey && inputKey.trim()) {
-      const res = await linkCustomAccount(inputKey.trim());
-      importedPub = res.publicKey;
+  const loginWithWallet = async (customKey = null) => {
+    let pubKey = wallet.publicKey;
+    if (customKey && customKey.trim()) {
+      pubKey = (await linkCustomAccount(customKey.trim())).publicKey;
     }
     const user = {
-      id: 'usr_w_' + importedPub.slice(0, 8),
+      id: 'usr_w_' + pubKey.slice(0, 8),
       email: null,
-      name: `Stellar (${importedPub.slice(0, 4)}...${importedPub.slice(-4)})`,
+      name: `Stellar (${pubKey.slice(0, 4)}...${pubKey.slice(-4)})`,
       provider: 'wallet',
-      publicKey: importedPub,
-      role: 'device_a',
+      publicKey: pubKey,
+      role: role,
       connectedAt: Date.now()
     };
     setCurrentUser(user);
@@ -586,28 +565,28 @@ export function WalletProvider({ children }) {
 
   const loginAsPreset = (presetType) => {
     if (presetType === 'pagador') {
-      setActiveDevice('device_a');
+      setRole('payer');
       const user = {
         id: 'usr_payer',
         email: 'demo.pagador@pollar.io',
         name: 'Pagador Demo',
         provider: 'preset',
-        role: 'device_a',
-        publicKey: deviceA.publicKey,
+        role: 'payer',
+        publicKey: wallet.publicKey,
         connectedAt: Date.now()
       };
       setCurrentUser(user);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
       return user;
     } else if (presetType === 'comercio') {
-      setActiveDevice('device_b');
+      setRole('merchant');
       const user = {
         id: 'usr_merchant',
         email: 'pos.tienda@pollar.io',
         name: 'Comercio POS Demo',
         provider: 'preset',
-        role: 'device_b',
-        publicKey: deviceB.publicKey,
+        role: 'merchant',
+        publicKey: wallet.publicKey,
         connectedAt: Date.now()
       };
       setCurrentUser(user);
@@ -627,26 +606,16 @@ export function WalletProvider({ children }) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setCurrentUser(null);
-    const keysA = generateRealStellarKeypair();
-    const keysB = generateRealStellarKeypair();
-
-    setDeviceA({
-      name: 'Billetera Principal (Pagador A)',
-      publicKey: keysA.publicKey,
-      secretKey: keysA.secretKey,
+    const keys = generateRealStellarKeypair();
+    setWallet({
+      name: 'Mi Billetera',
+      publicKey: keys.publicKey,
+      secretKey: keys.secretKey,
       asset: 'USDT',
-      mainBalance: 100.0,
-      derivedOffline: 10.0,
-      spentOffline: 0.0,
-      currentNonce: 0,
-    });
-    setDeviceB({
-      name: 'Terminal Comercio (Cobrador B)',
-      publicKey: keysB.publicKey,
-      secretKey: keysB.secretKey,
-      asset: 'USDT',
-      mainBalance: 25.0,
+      mainBalance: role === 'payer' ? 100.0 : 25.0,
+      offlineBalance: role === 'payer' ? 10.0 : 0.0,
       receivedOffline: 0.0,
+      currentNonce: 0,
     });
     setTransactions([]);
     setLastSyncResult(null);
@@ -668,15 +637,17 @@ export function WalletProvider({ children }) {
       checkBiometricAvailable,
       registerBiometric,
       authenticateWithBiometric,
-      activeDevice,
-      setActiveDevice,
+      role,
+      setRole,
       isOnline: effectiveOnline,
       isSimulatingOffline,
       setIsSimulatingOffline,
       autoSyncEnabled,
       setAutoSyncEnabled,
-      deviceA,
-      deviceB,
+      wallet,
+      setWallet,
+      counterpartWallet,
+      setCounterpartWallet,
       transactions,
       merkleTree,
       isSyncing,
