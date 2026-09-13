@@ -32,7 +32,9 @@ const VAULT_ABI = [
   'function depositVault() public payable',
   'function depositTokenVault(address token, uint256 amount) external',
   'function withdrawVault(uint256 amount) external',
-  'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
+  'function withdrawTokenVault(address token, uint256 amount) external',
+  'function getVault(address payer) external view returns (address, uint256, uint256, uint256, bytes32, uint64)',
+  'function getTokenVault(address payer, address token) external view returns (address, uint256, uint256, uint256, bytes32, uint64)'
 ];
 
 const FORWARDER_ABI = [
@@ -149,14 +151,14 @@ export function WalletProvider({ children }) {
       const hskBal = await provider.getBalance(address);
       setHskBalance(parseFloat(ethers.formatEther(hskBal)).toFixed(4));
 
-      // USDC balance
+      // USDC balance (6 decimals)
       const usdcBal = await usdcContract.balanceOf(address);
       const decimals = await usdcContract.decimals();
       setUsdcBalance(parseFloat(ethers.formatUnits(usdcBal, decimals)).toFixed(2));
 
-      // Vault balance
-      const vaultBal = await vaultContract.getVault(address);
-      setVaultBalance(ethers.formatEther(vaultBal[1]));
+      // Vault balance (use getTokenVault for ERC20)
+      const vaultBal = await vaultContract.getTokenVault(address, HSK_TESTNET.contracts.usdc);
+      setVaultBalance(parseFloat(ethers.formatUnits(vaultBal[1], decimals)).toFixed(2));
     } catch (e) {
       console.warn('[Wallet] Balance refresh error:', e.message);
     }
@@ -185,18 +187,28 @@ export function WalletProvider({ children }) {
     try {
       const decimals = await usdcContract.decimals();
       const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      const vaultAddress = HSK_TESTNET.contracts.vault;
+      const userAddress = await signer.getAddress();
       
-      // 1. Approve
-      const approveTx = await usdcContract.approve(HSK_TESTNET.contracts.vault, amountUnits);
-      await approveTx.wait();
-      console.log('[Wallet] Approved', amount, 'USDC');
-
-      // 2. Deposit
+      // 1. Check current allowance
+      const currentAllowance = await usdcContract.allowance(userAddress, vaultAddress);
+      console.log('[Wallet] Current allowance:', ethers.formatUnits(currentAllowance, decimals));
+      
+      // 2. Approve if needed
+      if (currentAllowance < amountUnits) {
+        console.log('[Wallet] Approving', amount, 'USDC...');
+        const approveTx = await usdcContract.approve(vaultAddress, amountUnits);
+        await approveTx.wait();
+        console.log('[Wallet] Approved! Tx:', approveTx.hash);
+      }
+      
+      // 3. Deposit
+      console.log('[Wallet] Depositing', amount, 'USDC to Vault...');
       const depositTx = await vaultContract.depositTokenVault(HSK_TESTNET.contracts.usdc, amountUnits);
       await depositTx.wait();
       
-      await refreshBalances(await signer.getAddress());
-      console.log('[Wallet] Deposited', amount, 'USDC to Vault');
+      await refreshBalances(userAddress);
+      console.log('[Wallet] Deposited! Tx:', depositTx.hash);
       return depositTx.hash;
     } catch (e) {
       console.error('[Wallet] Deposit error:', e);
@@ -208,8 +220,9 @@ export function WalletProvider({ children }) {
   const withdrawFromVault = useCallback(async (amount) => {
     if (!vaultContract || !signer) throw new Error('No conectado');
     try {
-      const amountUnits = ethers.parseEther(amount.toString());
-      const tx = await vaultContract.withdrawVault(amountUnits);
+      const decimals = await usdcContract.decimals();
+      const amountUnits = ethers.parseUnits(amount.toString(), decimals);
+      const tx = await vaultContract.withdrawTokenVault(HSK_TESTNET.contracts.usdc, amountUnits);
       await tx.wait();
       await refreshBalances(await signer.getAddress());
       return tx.hash;
@@ -217,12 +230,17 @@ export function WalletProvider({ children }) {
       console.error('[Wallet] Withdraw error:', e);
       throw e;
     }
-  }, [vaultContract, signer, refreshBalances]);
+  }, [vaultContract, usdcContract, signer, refreshBalances]);
 
   // Send USDC transfer
   const sendUSDC = useCallback(async (to, amount) => {
     if (!usdcContract || !signer) throw new Error('No conectado');
     try {
+      // Validate address
+      if (!to.startsWith('0x') || to.length !== 42) {
+        throw new Error('Dirección inválida. Usa formato 0x... (42 caracteres)');
+      }
+      
       const decimals = await usdcContract.decimals();
       const amountUnits = ethers.parseUnits(amount.toString(), decimals);
       const tx = await usdcContract.transfer(to, amountUnits);
@@ -239,6 +257,11 @@ export function WalletProvider({ children }) {
   const sendMetaTransaction = useCallback(async (to, amount) => {
     if (!forwarderContract || !usdcContract || !signer) throw new Error('No conectado');
     try {
+      // Validate address
+      if (!to.startsWith('0x') || to.length !== 42) {
+        throw new Error('Dirección inválida. Usa formato 0x... (42 caracteres)');
+      }
+      
       const decimals = await usdcContract.decimals();
       const amountUnits = ethers.parseUnits(amount.toString(), decimals);
       

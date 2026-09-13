@@ -65,7 +65,7 @@ function ActionButtons({ onSend, onMint, onDeposit, onWithdraw }) {
 }
 
 function P2P() {
-  const { sendUSDC, sendMetaTransaction, currentUser, refreshBalances } = useWallet();
+  const { sendUSDC, sendMetaTransaction, currentUser, refreshBalances, contracts } = useWallet();
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
@@ -74,6 +74,10 @@ function P2P() {
   const handleSend = async () => {
     if (!toAddress || !amount) {
       setStatus('Ingresa address y monto');
+      return;
+    }
+    if (!toAddress.startsWith('0x') || toAddress.length !== 42) {
+      setStatus('Dirección inválida (formato 0x... 42 caracteres)');
       return;
     }
     setStatus('Enviando...');
@@ -107,7 +111,7 @@ function P2P() {
 
         <input
           className="hsk-input"
-          placeholder="0x... address"
+          placeholder="0x... address (42 caracteres)"
           value={toAddress}
           onChange={(e) => setToAddress(e.target.value)}
         />
