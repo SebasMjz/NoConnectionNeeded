@@ -663,7 +663,14 @@ export function WalletProvider({ children }) {
       requestFriendbotFunding,
       isRefreshingBalance,
       pendingTx,
-      setPendingTx
+      setPendingTx,
+      isPayer: role === 'payer',
+      isMerchant: role === 'merchant',
+      // Backward compatibility aliases (old deviceA/deviceB model)
+      deviceA: role === 'payer' ? wallet : counterpartWallet,
+      deviceB: role === 'payer' ? counterpartWallet : wallet,
+      activeDevice: role === 'payer' ? 'device_a' : 'device_b',
+      setActiveDevice: (device) => setRole(device === 'device_b' ? 'merchant' : 'payer')
     }}>
       {children}
     </WalletContext.Provider>
