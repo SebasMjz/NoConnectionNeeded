@@ -1,0 +1,1 @@
+{"nodes": [{"id": "pkg_pollar_core", "label": "pollar-core", "file_type": "code", "type": "package", "ecosystem": "go", "source_file": "core-go/go.mod", "source_location": "L1"}], "edges": []}

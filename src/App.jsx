@@ -1,400 +1,55 @@
 import React, { useState } from 'react';
 import { WalletProvider, useWallet } from './context/WalletContext';
 import AuthGateway from './components/AuthGateway';
-import PollarLogo from './components/PollarLogo';
-import WalletVault from './components/WalletVault';
-import P2PPaymentTerminal from './components/P2PPaymentTerminal';
-import SyncManager from './components/SyncManager';
-import DualDeviceSimulator from './components/DualDeviceSimulator';
-import LinkAccountModal from './components/LinkAccountModal';
-import {
-  Wallet,
-  Send,
-  RefreshCw,
-  Layers,
-  Settings,
-  Wifi,
-  WifiOff,
-  Link2,
-  RotateCcw,
-  LogOut,
-  Sparkles,
-  X,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
+import Header from './components/Header';
+import BalanceCard from './components/BalanceCard';
+import P2P from './components/P2P';
+import Sync from './components/Sync';
+import Settings from './components/Settings';
+import { Send, ArrowDownLeft, RefreshCw, Layers, Settings as SettingsIcon } from 'lucide-react';
 
 function AppContent() {
+  const { wallet, currentUser } = useWallet();
   const [activeTab, setActiveTab] = useState('home');
-  const [terminalMode, setTerminalMode] = useState('pay');
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
-  const { 
-    currentUser, 
-    logout,
-    isOnline, 
-    isHardwareOnline,
-    isSimulatingOffline,
-    setIsSimulatingOffline,
-    checkConnectivityNow,
-    autoSyncStatus,
-    transactions, 
-    resetDemoData,
-    myWallet,
-    deviceA,
-    requestFriendbotFunding
-  } = useWallet();
-
-  // If user is not authenticated, show the Login Gateway
   if (!currentUser) {
-    return <AuthGateway onLoginSuccess={() => setActiveTab('home')} />;
+    return <AuthGateway />;
   }
 
-  const currentAccount = myWallet || deviceA;
-  const pendingCount = transactions.filter(t => t.status !== 'SYNCED_ONCHAIN').length;
-
   const tabs = [
-    { id: 'home', label: 'Bóveda', icon: Wallet },
-    { id: 'send', label: 'Transferir', icon: Send },
-    { id: 'sync', label: 'Sincronizar', icon: RefreshCw },
-    { id: 'lab', label: 'Simulador', icon: Layers },
+    { id: 'home', label: 'Wallet', icon: Send },
+    { id: 'p2p', label: 'P2P', icon: ArrowDownLeft },
+    { id: 'sync', label: 'Sync', icon: RefreshCw },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
-    <div className="pollar-app-shell">
+    <div className="hsk-app">
+      <Header onSettings={() => setShowSettings(true)} />
       
-      {/* Top Header */}
-      <header className="pollar-header">
-        <div className="pollar-user-pill">
-          {/* Official Pollar Bear Brand Badge */}
-          <div 
-            style={{ 
-              width: 42, 
-              height: 42, 
-              borderRadius: 14, 
-              background: '#EEF5FF', 
-              border: '1.5px solid rgba(0, 98, 255, 0.18)', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              flexShrink: 0,
-              boxShadow: '0 2px 8px rgba(0, 98, 255, 0.1)'
-            }}
-          >
-            <PollarLogo size={26} showText={false} />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Hola,</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentUser.name || 'Usuario'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 900, color: 'var(--pollar-blue)', letterSpacing: '-0.2px' }}>
-                pollar pay
-              </span>
-              <span style={{ fontSize: 9, fontWeight: 800, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', padding: '1px 6px', borderRadius: 6, fontFamily: 'var(--font-mono)' }}>
-                TESTNET
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="pollar-header-actions">
-          {/* Dynamic Online / Offline / Simulado Indicator */}
-          <button
-            onClick={() => {
-              if (isSimulatingOffline) {
-                setIsSimulatingOffline(false);
-              } else if (!isHardwareOnline) {
-                checkConnectivityNow();
-              } else {
-                setIsSimulatingOffline(true);
-              }
-            }}
-            className={`pollar-status-badge ${
-              isSimulatingOffline 
-                ? 'simulated' 
-                : isOnline 
-                  ? 'online' 
-                  : 'offline'
-            }`}
-            title={
-              isSimulatingOffline
-                ? 'Modo Offline Simulado activo. Pulsa para volver a Online.'
-                : isOnline
-                  ? 'Conectado a Internet (Sepolia). Pulsa para simular Modo Offline.'
-                  : 'Sin conexión a Internet en el dispositivo. Pulsa para verificar.'
-            }
-          >
-            <div className="pollar-status-dot" />
-            {isSimulatingOffline ? (
-              <>
-                <WifiOff size={13} />
-                <span>Simulado Offline</span>
-              </>
-            ) : isOnline ? (
-              <>
-                <Wifi size={13} />
-                <span>Online</span>
-              </>
-            ) : (
-              <>
-                <WifiOff size={13} />
-                <span>Sin Internet</span>
-              </>
-            )}
-          </button>
-
-          <button 
-            onClick={() => setIsSettingsOpen(true)}
-            className="pollar-user-avatar-btn"
-            title="Ajustes y Perfil"
-          >
-            {currentUser.avatar ? (
-              <img 
-                src={currentUser.avatar} 
-                alt="Avatar" 
-                style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover' }} 
-              />
-            ) : (
-              <Settings size={18} />
-            )}
-          </button>
-        </div>
-      </header>
-
-      {/* Auto-Sync Live Status Banner */}
-      {autoSyncStatus && (
-        <div 
-          style={{
-            margin: '0 16px 12px 16px',
-            padding: '10px 14px',
-            borderRadius: 14,
-            fontSize: 12,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            boxShadow: '0 3px 10px rgba(0,0,0,0.05)',
-            background: autoSyncStatus.status === 'success' 
-              ? 'var(--color-emerald-bg)' 
-              : autoSyncStatus.status === 'syncing' 
-                ? 'var(--pollar-blue-light)' 
-                : 'var(--color-amber-bg)',
-            color: autoSyncStatus.status === 'success'
-              ? 'var(--color-emerald)'
-              : autoSyncStatus.status === 'syncing'
-                ? 'var(--pollar-blue)'
-                : 'var(--color-amber)',
-            border: `1px solid ${
-              autoSyncStatus.status === 'success' 
-                ? 'rgba(16, 185, 129, 0.3)' 
-                : autoSyncStatus.status === 'syncing' 
-                  ? 'rgba(0, 98, 255, 0.3)' 
-                  : 'rgba(245, 158, 11, 0.3)'
-            }`
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            {autoSyncStatus.status === 'syncing' && <RefreshCw size={14} className="animate-spin" style={{ flexShrink: 0 }} />}
-            {autoSyncStatus.status === 'success' && <CheckCircle2 size={14} style={{ flexShrink: 0 }} />}
-            {autoSyncStatus.status === 'error' && <AlertCircle size={14} style={{ flexShrink: 0 }} />}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {autoSyncStatus.message}
-            </span>
-          </div>
-          {autoSyncStatus.status === 'error' && (
-            <button 
-              onClick={() => setActiveTab('sync')} 
-              style={{ 
-                fontSize: 11, 
-                fontWeight: 800, 
-                textDecoration: 'underline', 
-                background: 'none', 
-                border: 'none', 
-                color: 'inherit',
-                cursor: 'pointer',
-                flexShrink: 0
-              }}
-            >
-              Ver Detalle
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Main Content Area with Bottom Clearance */}
-      <main className="pollar-main-content">
-        {activeTab === 'home' && (
-          <WalletVault 
-            onNavigate={(tab, mode) => {
-              if (mode) setTerminalMode(mode);
-              setActiveTab(tab);
-            }} 
-            onOpenLinkModal={() => setIsLinkModalOpen(true)} 
-          />
-        )}
-        {activeTab === 'send' && <P2PPaymentTerminal initialMode={terminalMode} />}
-        {activeTab === 'sync' && <SyncManager />}
-        {activeTab === 'lab' && <DualDeviceSimulator />}
-
-        {/* Safe Bottom Clearance Spacer so content is never covered by bottom nav */}
-        <div style={{ height: 60, width: '100%', flexShrink: 0 }} />
+      <main className="hsk-main">
+        {activeTab === 'home' && <BalanceCard />}
+        {activeTab === 'p2p' && <P2P />}
+        {activeTab === 'sync' && <Sync />}
       </main>
 
-      {/* Modern Bottom Navigation Bar */}
-      <nav className="pollar-bottom-nav-bar">
-        <div className="pollar-bottom-nav-pill">
+      <nav className="hsk-nav">
+        <div className="hsk-nav-pill">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
-              className={`pollar-nav-tab ${activeTab === id ? (id === 'sync' ? 'active sync-tab' : 'active') : ''}`}
+              onClick={() => id === 'settings' ? setShowSettings(true) : setActiveTab(id)}
+              className={`hsk-nav-tab ${activeTab === id ? 'active' : ''}`}
             >
-              <div className="pollar-nav-tab-icon-wrap">
-                <Icon size={20} />
-              </div>
-              <span className="pollar-nav-tab-label">{label}</span>
-              
-              {id === 'sync' && pendingCount > 0 && (
-                <span className="pollar-nav-badge">
-                  {pendingCount}
-                </span>
-              )}
+              <Icon size={20} />
+              <span className="hsk-nav-label">{label}</span>
             </button>
           ))}
         </div>
       </nav>
 
-      {/* User Profile & Settings Bottom Sheet */}
-      {isSettingsOpen && (
-        <div className="pollar-modal-overlay" onClick={() => setIsSettingsOpen(false)}>
-          <div className="pollar-modal-sheet" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {currentUser.avatar ? (
-                  <img src={currentUser.avatar} alt="Avatar" style={{ width: 48, height: 48, borderRadius: 16, objectFit: 'cover' }} />
-                ) : (
-                  <div className="pollar-user-avatar" style={{ width: 48, height: 48, borderRadius: 16, fontSize: 18 }}>
-                    {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                )}
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-main)' }}>{currentUser.name || 'Usuario'}</h3>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                    {currentUser.email || currentUser.publicKey?.slice(0, 16) + '...'}
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
-                className="pollar-icon-btn"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={() => { setIsLinkModalOpen(true); setIsSettingsOpen(false); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 16px',
-                  borderRadius: 18,
-                  background: 'var(--bg-card-muted)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'left'
-                }}
-              >
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Link2 size={18} />
-                </div>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Vincular Cuenta Stellar</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Importar clave secreta S... o pública G...</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => { requestFriendbotFunding(deviceA.publicKey); setIsSettingsOpen(false); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 16px',
-                  borderRadius: 18,
-                  background: 'var(--bg-card-muted)',
-                  border: '1px solid var(--border-subtle)',
-                  textAlign: 'left'
-                }}
-              >
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--color-amber-bg)', color: 'var(--color-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', display: 'block' }}>Fondeo Friendbot</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+10,000 XLM Testnet gratis</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Bottom Actions */}
-            <div style={{ display: 'flex', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-              <button
-                onClick={() => { resetDemoData(); setIsSettingsOpen(false); }}
-                style={{
-                  flex: 1,
-                  height: 48,
-                  borderRadius: 14,
-                  background: 'var(--color-rose-bg)',
-                  color: 'var(--color-rose)',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <RotateCcw size={16} /> Reiniciar
-              </button>
-              <button
-                onClick={() => { logout(); setIsSettingsOpen(false); }}
-                style={{
-                  flex: 1,
-                  height: 48,
-                  borderRadius: 14,
-                  background: '#F1F5F9',
-                  color: 'var(--text-main)',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6
-                }}
-              >
-                <LogOut size={16} /> Salir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modals */}
-      <LinkAccountModal
-        isOpen={isLinkModalOpen}
-        onClose={() => setIsLinkModalOpen(false)}
-      />
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

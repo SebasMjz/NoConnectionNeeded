@@ -1,98 +1,32 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
-import PollarLogo from './PollarLogo';
-import WalletConnectModal from './WalletConnectModal';
-import { 
-  Mail, 
-  Wallet, 
-  ArrowRight, 
-  CheckCircle2, 
-  AlertCircle, 
-  Sparkles,
-  KeyRound
-} from 'lucide-react';
+import { Wallet, ArrowRight, Eye, EyeOff, KeyRound } from 'lucide-react';
 
-export default function AuthGateway({ onLoginSuccess }) {
-  const { loginWithEmail, loginWithGoogle, loginWithWallet, loginAsPreset } = useWallet();
-  const [email, setEmail] = useState('');
+export default function AuthGateway() {
+  const { login, loginAsDemo } = useWallet();
+  const [privateKey, setPrivateKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState('input');
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
-  const [feedback, setFeedback] = useState({ type: '', message: '' });
+  const [error, setError] = useState('');
 
-  const inputRefs = useRef([]);
-
-  const handleEmailSubmit = (e) => {
-    e.preventDefault();
-    if (!email || !email.includes('@')) {
-      setFeedback({ type: 'error', message: 'Por favor ingresa un correo electrónico válido.' });
-      return;
-    }
-    setFeedback({ type: '', message: '' });
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      // Generate a realistic 6-digit code or prompt user
-      setOtpDigits(['7', '3', '9', '2', '0', '1']);
-      setStep('otp');
-    }, 450);
-  };
-
-  const handleOtpChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return;
-
-    const newDigits = [...otpDigits];
-    newDigits[index] = value.slice(-1);
-    setOtpDigits(newDigits);
-
-    // Auto-advance
-    if (value && index < 5 && inputRefs.current[index + 1]) {
-      inputRefs.current[index + 1].focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0 && inputRefs.current[index - 1]) {
-      inputRefs.current[index - 1].focus();
-    }
-  };
-
-  const handleOtpPaste = (e) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim();
-    if (/^\d{6}$/.test(pasted)) {
-      setOtpDigits(pasted.split(''));
-    }
-  };
-
-  const handleConfirmOtp = () => {
-    const code = otpDigits.join('');
-    if (code.length < 6) {
-      setFeedback({ type: 'error', message: 'Por favor ingresa el código de 6 dígitos completo.' });
+  const handleLogin = async () => {
+    if (!privateKey.trim()) {
+      setError('Ingresa una clave privada');
       return;
     }
     setIsLoading(true);
-    setFeedback({ type: '', message: '' });
-    setTimeout(() => {
-      loginWithEmail(email);
+    setError('');
+    try {
+      login(privateKey.trim());
+    } catch (err) {
+      setError(err.message || 'Clave privada inválida');
+    } finally {
       setIsLoading(false);
-      if (onLoginSuccess) onLoginSuccess();
-    }, 350);
+    }
   };
 
-  const handleGoogleLogin = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      loginWithGoogle(email && email.includes('@') ? email : 'usuario.pollar@gmail.com');
-      setIsLoading(false);
-      if (onLoginSuccess) onLoginSuccess();
-    }, 450);
-  };
-
-  const handleWalletLoginComplete = () => {
-    if (onLoginSuccess) onLoginSuccess();
+  const handleDemo = () => {
+    loginAsDemo();
   };
 
   return (
@@ -104,231 +38,95 @@ export default function AuthGateway({ onLoginSuccess }) {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px 16px',
-      background: '#F8FAFC'
+      background: '#0A0F0D'
     }}>
-      {/* Auth Card Container */}
       <div style={{
         width: '100%',
-        maxWidth: 420,
-        background: '#FFFFFF',
-        borderRadius: 32,
-        padding: '36px 28px',
-        boxShadow: '0 20px 50px rgba(15, 23, 42, 0.08), 0 1px 4px rgba(15, 23, 42, 0.02)',
-        border: '1px solid #E2E8F0',
+        maxWidth: 380,
+        background: '#141A17',
+        borderRadius: 24,
+        padding: '32px 24px',
+        border: '1px solid #1E2522',
         display: 'flex',
         flexDirection: 'column',
-        gap: 24
+        gap: 20
       }}>
-        
-        {/* Brand Header */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
-          <PollarLogo size={58} showText={true} textColor="text-slate-900" textSize="text-3xl" />
-          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
-            {step === 'input' ? 'Iniciar sesión o registrarse' : 'Código de verificación'}
+        {/* Brand */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16,
+            background: 'linear-gradient(135deg, #00B386 0%, #00D68F 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#FFFFFF', fontSize: 24, fontWeight: 700
+          }}>P</div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#FFFFFF' }}>Pollar</h1>
+          <p style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
+            Offline P2P Payments on HashKey Chain
           </p>
         </div>
 
-        {step === 'input' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {/* Email Form */}
-            <form onSubmit={handleEmailSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
-                  className="pollar-input"
-                  required
-                />
-              </div>
-
-              {feedback.message && (
-                <div style={{
-                  padding: 12,
-                  borderRadius: 14,
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  background: 'var(--color-rose-bg)',
-                  color: 'var(--color-rose)'
-                }}>
-                  <AlertCircle size={16} />
-                  <span>{feedback.message}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading || !email}
-                className="pollar-btn-primary"
-              >
-                {isLoading ? (
-                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  'Continuar con Email'
-                )}
-              </button>
-            </form>
-
-            {/* Divider */}
-            <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0' }}>
-              <div style={{ flexGrow: 1, height: 1, background: '#E2E8F0' }} />
-              <span style={{ padding: '0 12px', fontSize: 12, color: 'var(--text-light)', fontWeight: 500 }}>o continuar con</span>
-              <div style={{ flexGrow: 1, height: 1, background: '#E2E8F0' }} />
-            </div>
-
-            {/* Social & Wallet Buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Google Button */}
-              <button
-                onClick={handleGoogleLogin}
-                type="button"
-                className="pollar-btn-secondary"
-                style={{ background: '#FFFFFF', border: '1.5px solid #E2E8F0' }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                </svg>
-                <span>Google</span>
-              </button>
-
-              {/* Wallet Button */}
-              <button
-                onClick={() => setIsWalletModalOpen(true)}
-                type="button"
-                className="pollar-btn-outline-blue"
-              >
-                <Wallet size={18} />
-                <span>Continuar con una billetera</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* OTP Screen */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'center' }}>
-            <div style={{ padding: 14, background: 'var(--pollar-blue-light)', color: 'var(--pollar-blue)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
-              <KeyRound size={18} />
-              <span>Código enviado a {email}</span>
-            </div>
-
-            <div 
-              style={{ display: 'flex', justifyContent: 'center', gap: 8 }}
-              onPaste={handleOtpPaste}
+        {/* Private Key Input */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#9CA3AF' }}>
+            Private Key
+          </label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={privateKey}
+              onChange={(e) => setPrivateKey(e.target.value)}
+              placeholder="0x..."
+              className="hsk-input"
+              style={{ paddingRight: 44 }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              style={{
+                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', color: '#6B7280'
+              }}
             >
-              {otpDigits.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={el => inputRefs.current[i] = el}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  style={{
-                    width: 44,
-                    height: 52,
-                    borderRadius: 14,
-                    border: digit ? '1.5px solid var(--pollar-blue)' : '1.5px solid #E2E8F0',
-                    background: digit ? '#FFFFFF' : '#F8FAFC',
-                    textAlign: 'center',
-                    fontSize: 20,
-                    fontWeight: 900,
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--text-main)',
-                    outline: 'none',
-                    transition: 'all 0.15s ease'
-                  }}
-                />
-              ))}
-            </div>
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </div>
 
-            {feedback.message && (
-              <div style={{
-                padding: 10,
-                borderRadius: 12,
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                background: 'var(--color-rose-bg)',
-                color: 'var(--color-rose)'
-              }}>
-                <AlertCircle size={15} />
-                <span>{feedback.message}</span>
-              </div>
-            )}
-
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Ingresa el código de 6 dígitos para autenticarte.
-            </p>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => { setStep('input'); setFeedback({ type: '', message: '' }); }}
-                className="pollar-btn-secondary"
-                style={{ flex: 1 }}
-              >
-                Volver
-              </button>
-              <button
-                onClick={handleConfirmOtp}
-                disabled={isLoading}
-                className="pollar-btn-primary"
-                style={{ flex: 1 }}
-              >
-                {isLoading ? 'Verificando...' : 'Confirmar'}
-              </button>
-            </div>
+        {error && (
+          <div style={{
+            padding: 10, borderRadius: 8,
+            background: '#FEF2F2', color: '#DC2626', fontSize: 12
+          }}>
+            {error}
           </div>
         )}
 
-        {/* Quick Access */}
-        <div style={{ paddingTop: 16, borderTop: '1px solid #F1F5F9', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button
-            onClick={() => {
-              loginAsPreset('mi_billetera');
-              if (onLoginSuccess) onLoginSuccess();
-            }}
-            style={{
-              padding: '14px 18px',
-              borderRadius: 18,
-              background: 'var(--pollar-blue-light)',
-              border: '1.5px solid rgba(0, 98, 255, 0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              cursor: 'pointer'
-            }}
-          >
-            <Sparkles size={18} color="var(--pollar-blue)" />
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--pollar-blue)' }}>⚡ Ingresar a Mi Billetera Directa</span>
-          </button>
+        {/* Login Button */}
+        <button onClick={handleLogin} disabled={isLoading} className="hsk-btn hsk-btn-primary">
+          {isLoading ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <><KeyRound size={16} /> Import Wallet</>
+          )}
+        </button>
+
+        {/* Divider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 1, background: '#1E2522' }} />
+          <span style={{ fontSize: 11, color: '#6B7280' }}>or</span>
+          <div style={{ flex: 1, height: 1, background: '#1E2522' }} />
         </div>
 
-        {/* Footer */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, color: 'var(--text-light)', fontWeight: 500, paddingTop: 4 }}>
-          <span>Protegido por</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--pollar-blue)', fontWeight: 800 }}>
-            <PollarLogo size={14} showText={false} />
-            <span>pollar</span>
-          </div>
-        </div>
+        {/* Demo Button */}
+        <button onClick={handleDemo} className="hsk-btn hsk-btn-secondary">
+          <Wallet size={16} /> Try Demo Wallet
+        </button>
+
+        {/* Info */}
+        <p style={{ fontSize: 10, color: '#6B7280', textAlign: 'center', lineHeight: 1.4 }}>
+          Your private key never leaves this device. All transactions are signed offline.
+        </p>
       </div>
-
-      {/* Wallet Modal */}
-      <WalletConnectModal
-        isOpen={isWalletModalOpen}
-        onClose={() => setIsWalletModalOpen(false)}
-        onConnected={handleWalletLoginComplete}
-      />
     </div>
   );
 }
