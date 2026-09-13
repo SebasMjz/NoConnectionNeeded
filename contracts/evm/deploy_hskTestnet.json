@@ -1,0 +1,12 @@
+{
+  "network": "hskTestnet",
+  "chainId": 133,
+  "deployer": "0x9E3EBaF039a45Ab325853d6fB289debbE280a31b",
+  "deployedAt": "2026-09-13T08:06:51.631Z",
+  "contracts": {
+    "forwarder": "0xBFB5078c8afF57226F1f32de999dd0ADd559dcbC",
+    "vault": "0x7e906F6C41660C218282fe4F5d7C76d8D8604d96",
+    "mockUSDC": "0x788952C55A04F32C4dC26dEd4858f5D6259f2F15"
+  },
+  "explorer": "https://hashkeychain-testnet-explorer.alt.technology"
+}

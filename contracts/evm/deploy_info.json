@@ -16,12 +16,12 @@
     "hskTestnet": {
       "name": "HashKey Chain Testnet",
       "chainId": 133,
-      "rpcUrl": "https://hashkeychain-testnet.alt.technology",
+      "rpcUrl": "https://testnet.hsk.xyz",
       "blockExplorer": "https://hashkeychain-testnet-explorer.alt.technology",
-      "faucetUrl": "https://faucet.hashkey.com",
-      "vaultAddress": "",
-      "forwarderAddress": "",
-      "usdcAddress": "",
+      "faucetUrl": "https://faucet.hskchain.net/faucet",
+      "vaultAddress": "0x7e906F6C41660C218282fe4F5d7C76d8D8604d96",
+      "forwarderAddress": "0xBFB5078c8afF57226F1f32de999dd0ADd559dcbC",
+      "usdcAddress": "0x788952C55A04F32C4dC26dEd4858f5D6259f2F15",
       "currencySymbol": "HSK",
       "nativeToken": "HSK"
     },

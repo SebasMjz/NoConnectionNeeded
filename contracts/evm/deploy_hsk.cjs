@@ -55,10 +55,10 @@ async function deploy() {
   const provider = new ethers.JsonRpcProvider(network.rpcUrl, network.chainId);
   const wallet = new ethers.Wallet(privateKey, provider);
 
-  // Sync nonce from chain
-  const currentNonce = await provider.getTransactionCount(wallet.address);
+  // Get initial nonce from chain
+  let currentNonce = await provider.getTransactionCount(wallet.address);
   console.log(`Deployer: ${wallet.address}`);
-  console.log(`Current nonce: ${currentNonce}`);
+  console.log(`Starting nonce: ${currentNonce}`);
   
   const balance = await provider.getBalance(wallet.address);
   console.log(`Balance: ${ethers.formatEther(balance)} HSK`);
@@ -70,40 +70,43 @@ async function deploy() {
 
   const deployed = {};
 
+  // Helper: deploy with manual nonce management
+  async function deployContract(name, factory, ...args) {
+    console.log(`\n--- Deploying ${name} (nonce ${currentNonce}) ---`);
+    
+    // Get fresh nonce from chain before each deploy
+    const chainNonce = await provider.getTransactionCount(wallet.address);
+    if (chainNonce > currentNonce) {
+      currentNonce = chainNonce;
+      console.log(`  Nonce synced from chain: ${currentNonce}`);
+    }
+    
+    const contract = await factory.deploy(...args, { nonce: currentNonce });
+    await contract.waitForDeployment();
+    const address = await contract.getAddress();
+    
+    // Increment local nonce
+    currentNonce++;
+    
+    console.log(`✓ ${name} deployed: ${address}`);
+    return address;
+  }
+
   // 1. Deploy PollarForwarder
-  console.log('\n--- Deploying PollarForwarder ---');
   const forwarderArtifact = loadArtifact('PollarForwarder.json');
   const forwarderFactory = new ethers.ContractFactory(forwarderArtifact.abi, forwarderArtifact.bytecode, wallet);
-  const forwarder = await forwarderFactory.deploy({ nonce: currentNonce });
-  await forwarder.waitForDeployment();
-  const forwarderAddress = await forwarder.getAddress();
-  deployed.forwarder = forwarderAddress;
-  console.log(`✓ PollarForwarder deployed: ${forwarderAddress}`);
+  deployed.forwarder = await deployContract('PollarForwarder', forwarderFactory);
 
-  // 2. Deploy PollarVault (with next nonce)
-  console.log('\n--- Deploying PollarVault ---');
-  const nextNonce = await provider.getTransactionCount(wallet.address);
-  console.log(`Using nonce: ${nextNonce}`);
+  // 2. Deploy PollarVault
   const vaultArtifact = loadArtifact('PollarVault.json');
   const vaultFactory = new ethers.ContractFactory(vaultArtifact.abi, vaultArtifact.bytecode, wallet);
-  const vault = await vaultFactory.deploy(forwarderAddress, { nonce: nextNonce });
-  await vault.waitForDeployment();
-  const vaultAddress = await vault.getAddress();
-  deployed.vault = vaultAddress;
-  console.log(`✓ PollarVault deployed: ${vaultAddress}`);
+  deployed.vault = await deployContract('PollarVault', vaultFactory, deployed.forwarder);
 
   // 3. MockUSDC (testnet only)
   if (networkName.includes('testnet') || networkName.includes('Testnet')) {
-    console.log('\n--- Deploying MockUSDC (testnet only) ---');
-    const mockNonce = await provider.getTransactionCount(wallet.address);
-    console.log(`Using nonce: ${mockNonce}`);
     const mockArtifact = loadArtifact('MockUSDC.json');
     const mockFactory = new ethers.ContractFactory(mockArtifact.abi, mockArtifact.bytecode, wallet);
-    const mock = await mockFactory.deploy({ nonce: mockNonce });
-    await mock.waitForDeployment();
-    const mockAddress = await mock.getAddress();
-    deployed.mockUSDC = mockAddress;
-    console.log(`✓ MockUSDC deployed: ${mockAddress}`);
+    deployed.mockUSDC = await deployContract('MockUSDC', mockFactory);
   }
 
   // Save deployment info

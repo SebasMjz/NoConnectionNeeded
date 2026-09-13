@@ -34,15 +34,15 @@ export const EVM_NETWORKS = {
     chainId: 133,
     rpcUrl: 'https://testnet.hsk.xyz',
     blockExplorer: 'https://hashkeychain-testnet-explorer.alt.technology',
-    faucetUrl: 'https://faucet.hashkey.com',
+    faucetUrl: 'https://faucet.hskchain.net/faucet',
     symbol: 'HSK',
     nativeToken: 'HSK',
     tokenSymbol: 'USDC',
-    usdcAddress: '',
-    usdcDecimals: 18,
-    vaultAddress: '',
-    forwarderAddress: '',
-    forwarderDeployed: false
+    usdcAddress: '0x788952C55A04F32C4dC26dEd4858f5D6259f2F15',
+    usdcDecimals: 6,
+    vaultAddress: '0x7e906F6C41660C218282fe4F5d7C76d8D8604d96',
+    forwarderAddress: '0xBFB5078c8afF57226F1f32de999dd0ADd559dcbC',
+    forwarderDeployed: true
   },
   hskMainnet: {
     id: 'hskMainnet',
