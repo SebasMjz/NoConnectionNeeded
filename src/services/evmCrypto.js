@@ -53,6 +53,21 @@ export const EVM_NETWORKS = {
     symbol: 'HSK',
     nativeToken: 'HSK',
     tokenSymbol: 'USDC',
+    usdcAddress: '', // Por verificar en explorer
+    usdcDecimals: 18,
+    vaultAddress: '', // Por deployar
+    forwarderAddress: '', // Por deployar
+    forwarderDeployed: false
+  },
+  hskMainnet: {
+    id: 'hskMainnet',
+    name: 'HashKey Chain Mainnet',
+    chainId: 177,
+    rpcUrl: 'https://mainnet.hsk.xyz',
+    blockExplorer: 'https://explorer.hsk.xyz',
+    symbol: 'HSK',
+    nativeToken: 'HSK',
+    tokenSymbol: 'USDC',
     usdcAddress: '',
     usdcDecimals: 18,
     vaultAddress: '',
