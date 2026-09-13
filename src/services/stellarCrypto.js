@@ -366,15 +366,16 @@ export async function verifyMerkleProof(proof) {
 
 /**
  * Generates Reliable High-Res QR Code Data URL
+ * Uses standard black-on-white for maximum scanner compatibility
  */
-export async function generateQrDataUrl(dataObject, colorDark = '#00f2fe') {
+export async function generateQrDataUrl(dataObject, colorDark = '#000000') {
   const jsonString = typeof dataObject === 'string' ? dataObject : JSON.stringify(dataObject);
   return QRCode.toDataURL(jsonString, {
     width: 320,
     margin: 2,
     color: {
       dark: colorDark,
-      light: '#07090e'
+      light: '#FFFFFF'
     },
     errorCorrectionLevel: 'M'
   });

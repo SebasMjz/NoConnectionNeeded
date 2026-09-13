@@ -19,8 +19,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-const ICON_MAP = { QrCode, Bluetooth, Nfc, Wifi };
-
 export default function P2PPaymentTerminal({ onOpenTransport }) {
   const {
     activeDevice,
@@ -28,7 +26,8 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     deviceB,
     createOfflinePayment,
     receiveAndCounterSign,
-    isOnline
+    isOnline,
+    pendingTx
   } = useWallet();
 
   const [mode, setMode] = useState(activeDevice === 'device_b' ? 'receive' : 'pay');
@@ -36,7 +35,6 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
   const [payMemo, setPayMemo] = useState('Compra Offline');
   const [payeeAddress, setPayeeAddress] = useState(deviceB.publicKey);
   const [paymentQr, setPaymentQr] = useState('');
-  const [pendingTx, setPendingTx] = useState(null);
   const [receiveAmount, setReceiveAmount] = useState('2.50');
   const [receiveMemo, setReceiveMemo] = useState('Cobro Tienda');
   const [invoiceQr, setInvoiceQr] = useState('');
@@ -107,7 +105,6 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
     setHandshakeStep(1);
     try {
       const tx = await createOfflinePayment(payeeAddress, payAmount, payMemo);
-      setPendingTx(tx);
       setHandshakeStep(2);
       setFeedback({ type: 'success', message: '¡Pago firmado! Muestra este QR al comercio para contrafirma.' });
       if (navigator.vibrate) navigator.vibrate(60);
@@ -138,8 +135,6 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
           confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 }, colors: ['#10B981', '#0062FF'] });
           if (navigator.vibrate) navigator.vibrate([60, 40, 80]);
         } catch (e) {}
-        setPendingTx(null);
-        setManualInput('');
       } else {
         throw new Error('Formato QR no compatible');
       }
@@ -161,7 +156,6 @@ export default function P2PPaymentTerminal({ onOpenTransport }) {
       setShowManualCounterSign(false);
       setManualPayload('');
       setParsedPayload(null);
-      setPendingTx(null);
     } catch (err) {
       setFeedback({ type: 'error', message: err.message || 'Error al contrafirmar' });
     } finally {

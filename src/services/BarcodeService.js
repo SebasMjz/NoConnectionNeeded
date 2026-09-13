@@ -1,17 +1,16 @@
 /**
- * BarcodeService — QR scanner using html5-qrcode.
- * Works on web, Android WebView, and iOS Safari.
- * No native plugin needed.
+ * BarcodeService — QR scanner usando html5-qrcode.
+ * Import dinámico para evitar problemas de bundle.
  */
 
-let Html5QrcodeClass = null;
+let Html5Qrcode = null;
 
-async function ensureHtml5Qrcode() {
-  if (Html5QrcodeClass) return Html5QrcodeClass;
+async function loadHtml5Qrcode() {
+  if (Html5Qrcode) return Html5Qrcode;
   try {
     const mod = await import('html5-qrcode');
-    Html5QrcodeClass = mod.Html5Qrcode || mod.default?.Html5Qrcode || mod;
-    return Html5QrcodeClass;
+    Html5Qrcode = mod.Html5Qrcode || mod.default?.Html5Qrcode;
+    return Html5Qrcode;
   } catch {
     return null;
   }
@@ -24,7 +23,7 @@ export class BarcodeService {
   }
 
   async isAvailable() {
-    const html5 = await ensureHtml5Qrcode();
+    const html5 = await loadHtml5Qrcode();
     return !!html5 && typeof window !== 'undefined';
   }
 
@@ -35,41 +34,40 @@ export class BarcodeService {
         stream.getTracks().forEach(track => track.stop());
         return true;
       } catch (err) {
-        console.warn('Camera permission error:', err);
-        return false;
+        throw new Error('Permiso de cámara denegado');
       }
     }
     return true;
   }
 
   async scan() {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !navigator.mediaDevices) {
       throw new Error('Escáner no disponible en este dispositivo');
     }
 
-    const Html5Qrcode = await ensureHtml5Qrcode();
-    if (!Html5Qrcode) {
+    const Html5QrcodeClass = await loadHtml5Qrcode();
+    if (!Html5QrcodeClass) {
       throw new Error('Escáner no disponible en este dispositivo');
     }
 
     this.isScanning = true;
 
     return new Promise((resolve, reject) => {
-      const qrRegionId = 'pollar-qr-reader-container';
+      const overlayId = 'pollar-qr-overlay';
+      let overlay = document.getElementById(overlayId);
       
-      let overlay = document.getElementById('pollar-qr-overlay');
       if (!overlay) {
         overlay = document.createElement('div');
-        overlay.id = 'pollar-qr-overlay';
+        overlay.id = overlayId;
         document.body.appendChild(overlay);
       }
       
       overlay.innerHTML = '';
-      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
       
       const readerDiv = document.createElement('div');
-      readerDiv.id = qrRegionId;
-      readerDiv.style.cssText = 'width:100%;max-width:400px;min-height:300px;';
+      readerDiv.id = 'pollar-qr-reader';
+      readerDiv.style.cssText = 'width:100%;max-width:400px;min-height:300px;background:#222;';
       overlay.appendChild(readerDiv);
       
       const label = document.createElement('p');
@@ -99,21 +97,26 @@ export class BarcodeService {
         reject(new Error('cancelled'));
       };
 
-      this.scanner = new Html5Qrcode(qrRegionId);
-      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      try {
+        this.scanner = new Html5QrcodeClass('pollar-qr-reader');
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-      this.scanner.start(
-        { facingMode: 'environment' },
-        config,
-        (decodedText) => {
+        this.scanner.start(
+          { facingMode: 'environment' },
+          config,
+          (decodedText) => {
+            cleanup();
+            resolve(decodedText);
+          },
+          () => {}
+        ).catch(err => {
           cleanup();
-          resolve(decodedText);
-        },
-        () => {}
-      ).catch(err => {
+          reject(new Error('No se pudo iniciar la cámara: ' + (err.message || 'error')));
+        });
+      } catch (err) {
         cleanup();
-        reject(new Error('No se pudo iniciar la cámara: ' + (err.message || 'error desconocido')));
-      });
+        reject(new Error('Error al crear escáner: ' + (err.message || 'error')));
+      }
     });
   }
 

@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@capacitor/barcode-scanner": "^3.1.2",
     "@capacitor/core": "^8.5.2",
+    "@capgo/capacitor-nfc": "^8.2.6",
     "@stellar/stellar-sdk": "^17.0.1",
     "buffer": "^6.0.3",
     "canvas-confetti": "^1.9.4",
