@@ -2,9 +2,11 @@
 
 **Offline P2P Wallet for EVM-compatible Chains.** Send and receive USDC with zero gas cost for users, working even without internet connection. Deployed on Avalanche Fuji C-Chain Testnet.
 
+> **Avalanche Bounty Submission** — Built for the Avalanche ecosystem challenge
 > Active branch: `Bounty-Avalanche`
 > Network: Avalanche Fuji C-Chain (chainId 43113)
 > Chain: EVM-compatible
+> Bounty: Offline P2P payments with gasless UX on Avalanche
 
 ---
 
@@ -628,12 +630,55 @@ NCN-Pollar/ (Bounty-Avalanche branch)
 
 ---
 
+## Avalanche Bounty
+
+This project is submitted as part of the **Avalanche Ecosystem Bounty Challenge**.
+
+### Why Avalanche
+
+- **Low fees**: Avalanche C-Chain provides fast, cheap transactions ideal for micro-payments
+- **EVM compatibility**: Full Solidity support, standard tooling (ethers.js, Hardhat)
+- **Sub-second finality**: Transactions confirm in <2 seconds on Fuji testnet
+- **Ecosystem**: Native USDC support, mature DeFi infrastructure
+
+### Bounty Deliverables
+
+| Deliverable                     | Status      | Location                              |
+|--------------------------------|-------------|---------------------------------------|
+| Gasless P2P payments           | ✅ Done     | ERC-2771 + Relayer                    |
+| Offline transaction queue      | ✅ Done     | localStorage + Merkle tree            |
+| Dual-signature protocol        | ✅ Done     | Payer + payee counter-sign            |
+| Vault smart contract           | ✅ Done     | `contracts/evm/PollarVault.sol`       |
+| MockUSDC (EIP-3009 + EIP-2612) | ✅ Done     | `contracts/evm/MockUSDC.sol`          |
+| Android APK                    | ✅ Done     | `android/app/build/outputs/apk/`      |
+| Merchant POS terminal          | ✅ Done     | Relayer `/api/terminal/*` endpoints   |
+| Multi-chain support            | ✅ Done     | Avalanche + Sepolia + HSK + Base      |
+
+### Deployed Contracts (Avalanche Fuji)
+
+| Contract           | Address                                      |
+|--------------------|----------------------------------------------|
+| PollarForwarder    | `0x54ffCA414fA2D5bEe30088a7EC99887ea19B454f` |
+| PollarVault        | `0xbBB74646C9F5786A39E22f57d3a3e23a47d85eAa` |
+| MockUSDC           | `0x5425890298aed601595a70AB815c96711a31Bc65` |
+
+### How It Works on Avalanche
+
+1. **User deposits USDC** into PollarVault (gasless via EIP-3009 or EIP-2612)
+2. **Offline P2P payments** are signed locally with secp256k1
+3. **When online**, Relayer settles batch on-chain via `settleTokenBatch()`
+4. **Merkle root** anchored in transaction for audit proof
+5. **Zero gas** for end users — Relayer sponsors all transaction fees
+
+---
+
 ## Links
 
 - **Repository**: github.com/SebasMjz/NoConnectionNeeded
 - **Branch**: `Bounty-Avalanche`
 - **Avalanche Testnet Explorer**: testnet.snowtrace.io
 - **Avalanche Faucet**: core.app/tools/testnet-faucet
+- **Bounty Submission**: This branch (`Bounty-Avalanche`)
 
 ---
 
