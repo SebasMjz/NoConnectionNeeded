@@ -24,3 +24,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Presentation build artifacts
+generate_deck.js
+generate_deck.cjs
+*.pptx
+*.pdf
+slides/
+slide-*.jpg
+
+# Capacitor build outputs (not needed in repo)
+android/app/build/outputs/apk/debug/app-debug.apk

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NoConnectionNeeded — Architecture Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 1100px; display: block; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>NoConnectionNeeded — System Architecture</h1>
+      </div>
+      <p class="subtitle">feature/hsk-compatibility · HashKey Chain Testnet · ERC-2771 Gasless Meta-transactions</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1100 820" xmlns="http://www.w3.org/2000/svg">
+
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+          </marker>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+          </marker>
+          <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+          </marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+          </marker>
+          <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
+          </marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
+          </marker>
+          <marker id="arrow-slate" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background -->
+        <rect width="100%" height="100%" fill="#020617"/>
+        <rect width="100%" height="100%" fill="url(#grid)"/>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LAYER 4: Blockchain (bottom)                              -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- HSK Chain boundary -->
+        <rect x="30" y="570" width="1040" height="230" rx="12"
+              fill="rgba(251,191,36,0.04)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="46" y="594" fill="#fbbf24" font-size="10" font-weight="600">HashKey Chain Testnet</text>
+        <text x="46" y="608" fill="#64748b" font-size="9">chainId: 133 · RPC: testnet.hsk.xyz</text>
+
+        <!-- PollarForwarder contract -->
+        <rect x="55" y="635" width="200" height="120" rx="8"
+              fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+        <rect x="55" y="635" width="200" height="120" rx="8"
+              fill="rgba(76,29,149,0.25)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="155" y="662" fill="white" font-size="12" font-weight="600" text-anchor="middle">PollarForwarder</text>
+        <text x="155" y="678" fill="#a78bfa" font-size="9" text-anchor="middle">ERC-2771</text>
+        <text x="155" y="693" fill="#94a3b8" font-size="8" text-anchor="middle">getNonce(address)</text>
+        <text x="155" y="707" fill="#94a3b8" font-size="8" text-anchor="middle">execute(ForwardRequest, sig)</text>
+        <text x="155" y="743" fill="#fbbf24" font-size="8" text-anchor="middle">0xBFB5…59dcbC</text>
+
+        <!-- PollarVault contract -->
+        <rect x="300" y="635" width="200" height="120" rx="8"
+              fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+        <rect x="300" y="635" width="200" height="120" rx="8"
+              fill="rgba(6,78,59,0.25)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="400" y="662" fill="white" font-size="12" font-weight="600" text-anchor="middle">PollarVault</text>
+        <text x="400" y="678" fill="#34d399" font-size="9" text-anchor="middle">ERC-20 Custody</text>
+        <text x="400" y="693" fill="#94a3b8" font-size="8" text-anchor="middle">depositTokenVault()</text>
+        <text x="400" y="707" fill="#94a3b8" font-size="8" text-anchor="middle">withdrawTokenVault()</text>
+        <text x="400" y="743" fill="#fbbf24" font-size="8" text-anchor="middle">0x7e90…4d96</text>
+
+        <!-- MockUSDC token -->
+        <rect x="545" y="635" width="200" height="120" rx="8"
+              fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+        <rect x="545" y="635" width="200" height="120" rx="8"
+              fill="rgba(8,51,68,0.25)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="645" y="662" fill="white" font-size="12" font-weight="600" text-anchor="middle">MockUSDC</text>
+        <text x="645" y="678" fill="#22d3ee" font-size="9" text-anchor="middle">ERC-20 · 6 decimals</text>
+        <text x="645" y="693" fill="#94a3b8" font-size="8" text-anchor="middle">mint(address, amount)</text>
+        <text x="645" y="707" fill="#94a3b8" font-size="8" text-anchor="middle">balanceOf(address)</text>
+        <text x="645" y="743" fill="#fbbf24" font-size="8" text-anchor="middle">0x7889…2F15</text>
+
+        <!-- Faucet -->
+        <rect x="790" y="635" width="200" height="120" rx="8"
+              fill="#0f172a" stroke="#fb7185" stroke-width="1.5"/>
+        <rect x="790" y="635" width="200" height="120" rx="8"
+              fill="rgba(136,19,55,0.2)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="890" y="662" fill="white" font-size="12" font-weight="600" text-anchor="middle">Faucet</text>
+        <text x="890" y="678" fill="#fb7185" font-size="9" text-anchor="middle">Testnet Funder</text>
+        <text x="890" y="693" fill="#94a3b8" font-size="8" text-anchor="middle">HSK token requests</text>
+        <text x="890" y="707" fill="#94a3b8" font-size="8" text-anchor="middle">USDC mint for demo</text>
+        <text x="890" y="743" fill="#fbbf24" font-size="8" text-anchor="middle">hskchain.net/faucet</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LAYER 3: Backend / Relayer                               -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- Relayer boundary -->
+        <rect x="30" y="395" width="1040" height="150" rx="12"
+              fill="rgba(251,146,60,0.04)" stroke="#fb923c" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="46" y="418" fill="#fb923c" font-size="10" font-weight="600">Relayer Service</text>
+        <text x="46" y="432" fill="#64748b" font-size="9">Node.js · Express · ethers.js</text>
+
+        <!-- Relayer server -->
+        <rect x="55" y="450" width="200" height="75" rx="8"
+              fill="#0f172a" stroke="#fb923c" stroke-width="1.5"/>
+        <rect x="55" y="450" width="200" height="75" rx="8"
+              fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="155" y="477" fill="white" font-size="12" font-weight="600" text-anchor="middle">Relayer</text>
+        <text x="155" y="493" fill="#fb923c" font-size="9" text-anchor="middle">localhost:3001</text>
+        <text x="155" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">POST /api/relay/forward</text>
+
+        <!-- Forwarder API node -->
+        <rect x="300" y="450" width="200" height="75" rx="8"
+              fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+        <rect x="300" y="450" width="200" height="75" rx="8"
+              fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="400" y="477" fill="white" font-size="12" font-weight="600" text-anchor="middle">Forwarder API</text>
+        <text x="400" y="493" fill="#a78bfa" font-size="9" text-anchor="middle">EIP-712 Verification</text>
+        <text x="400" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">Nonce check · Signature</text>
+
+        <!-- HSK RPC -->
+        <rect x="545" y="450" width="200" height="75" rx="8"
+              fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+        <rect x="545" y="450" width="200" height="75" rx="8"
+              fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="645" y="477" fill="white" font-size="12" font-weight="600" text-anchor="middle">HSK RPC</text>
+        <text x="645" y="493" fill="#fbbf24" font-size="9" text-anchor="middle">testnet.hsk.xyz</text>
+        <text x="645" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">JsonRpcProvider</text>
+
+        <!-- Relayer wallet -->
+        <rect x="790" y="450" width="200" height="75" rx="8"
+              fill="#0f172a" stroke="#fb7185" stroke-width="1.5"/>
+        <rect x="790" y="450" width="200" height="75" rx="8"
+              fill="rgba(136,19,55,0.2)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="890" y="477" fill="white" font-size="12" font-weight="600" text-anchor="middle">Relayer Wallet</text>
+        <text x="890" y="493" fill="#fb7185" font-size="9" text-anchor="middle">Gas Payer</text>
+        <text x="890" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">~0.094 HSK balance</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LAYER 2: Frontend + Local Storage                       -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- Frontend boundary -->
+        <rect x="30" y="185" width="1040" height="185" rx="12"
+              fill="rgba(34,211,238,0.04)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="46" y="208" fill="#22d3ee" font-size="10" font-weight="600">Android Device</text>
+        <text x="46" y="222" fill="#64748b" font-size="9">React · Vite · Capacitor · localStorage</text>
+
+        <!-- Android Device frame -->
+        <rect x="55" y="240" width="700" height="115" rx="10"
+              fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+        <rect x="55" y="240" width="700" height="115" rx="10"
+              fill="rgba(8,51,68,0.2)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="405" y="262" fill="white" font-size="12" font-weight="600" text-anchor="middle">NoConnectionNeeded App</text>
+        <text x="405" y="278" fill="#22d3ee" font-size="9" text-anchor="middle">React + Capacitor (APK)</text>
+
+        <!-- WalletContext inside device -->
+        <rect x="75" y="290" width="180" height="50" rx="6"
+              fill="rgba(8,51,68,0.5)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="165" y="309" fill="white" font-size="10" font-weight="600" text-anchor="middle">WalletContext</text>
+        <text x="165" y="324" fill="#94a3b8" font-size="8" text-anchor="middle">provider · signer · isOnline</text>
+
+        <!-- PendingTx queue inside device -->
+        <rect x="275" y="290" width="200" height="50" rx="6"
+              fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1"/>
+        <text x="375" y="309" fill="white" font-size="10" font-weight="600" text-anchor="middle">pendingTx[]</text>
+        <text x="375" y="324" fill="#94a3b8" font-size="8" text-anchor="middle">Cola offline · localStorage</text>
+
+        <!-- EIP-712 Signer inside device -->
+        <rect x="495" y="290" width="235" height="50" rx="6"
+              fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="612" y="309" fill="white" font-size="10" font-weight="600" text-anchor="middle">EIP-712 Signer</text>
+        <text x="612" y="324" fill="#94a3b8" font-size="8" text-anchor="middle">Typed data · Wallet signature</text>
+
+        <!-- P2P Transfer (mocked) inside device -->
+        <rect x="55" y="340" width="350" height="0" rx="0"
+              fill="transparent" stroke="transparent" stroke-width="0"/>
+        <!-- Bluetooth icon label -->
+        <rect x="75" y="340" width="120" height="30" rx="6"
+              fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+        <text x="135" y="359" fill="#34d399" font-size="9" font-weight="600" text-anchor="middle">BT · NFC · QR</text>
+
+        <!-- Vault interaction inside device -->
+        <rect x="490" y="340" width="240" height="30" rx="6"
+              fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+        <text x="610" y="359" fill="#34d399" font-size="9" font-weight="600" text-anchor="middle">Vault UI · Deposit / Withdraw</text>
+
+        <!-- Online/Offline toggle -->
+        <rect x="830" y="240" width="210" height="50" rx="6"
+              fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="935" y="259" fill="white" font-size="10" font-weight="600" text-anchor="middle">Online / Offline</text>
+        <text x="935" y="274" fill="#94a3b8" font-size="8" text-anchor="middle">Toggle de conectividad</text>
+
+        <!-- SyncManager inside device -->
+        <rect x="830" y="290" width="210" height="50" rx="6"
+              fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+        <text x="935" y="309" fill="white" font-size="10" font-weight="600" text-anchor="middle">SyncManager</text>
+        <text x="935" y="324" fill="#94a3b8" font-size="8" text-anchor="middle">"Sync Ahora" · batch relay</text>
+
+        <!-- User address inside device -->
+        <rect x="830" y="340" width="210" height="30" rx="6"
+              fill="rgba(136,19,55,0.2)" stroke="#fb7185" stroke-width="1"/>
+        <text x="935" y="359" fill="#fb7185" font-size="9" font-weight="600" text-anchor="middle">0x9E3E…6268</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LAYER 1: User (top)                                     -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- User -->
+        <rect x="180" y="55" width="140" height="70" rx="8"
+              fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+        <rect x="180" y="55" width="140" height="70" rx="8"
+              fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="250" y="82" fill="white" font-size="12" font-weight="600" text-anchor="middle">Usuario</text>
+        <text x="250" y="98" fill="#94a3b8" font-size="9" text-anchor="middle">Celular Android</text>
+        <text x="250" y="112" fill="#94a3b8" font-size="9" text-anchor="middle">Sin internet (opcional)</text>
+
+        <!-- Second user (P2P) -->
+        <rect x="570" y="55" width="140" height="70" rx="8"
+              fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+        <rect x="570" y="55" width="140" height="70" rx="8"
+              fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="640" y="82" fill="white" font-size="12" font-weight="600" text-anchor="middle">Usuario B</text>
+        <text x="640" y="98" fill="#94a3b8" font-size="9" text-anchor="middle">Recibe pago P2P</text>
+        <text x="640" y="112" fill="#94a3b8" font-size="9" text-anchor="middle">QR · Bluetooth · NFC</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- ARROWS                                                -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <!-- User → App -->
+        <line x1="250" y1="125" x2="250" y2="238" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+        <text x="264" y="180" fill="#64748b" font-size="8">1. Abre app</text>
+
+        <!-- App → Relayer (online) -->
+        <line x1="405" y1="355" x2="405" y2="448" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-cyan)"/>
+        <text x="420" y="395" fill="#22d3ee" font-size="8">2a. Meta-tx</text>
+
+        <!-- App → localStorage (offline) -->
+        <path d="M 355 295 L 355 285 Q 355 275 365 275 L 460 275 Q 470 275 470 285 L 470 295"
+              fill="none" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-amber)"/>
+        <text x="360" y="268" fill="#fb923c" font-size="8">2b. Guarda offline</text>
+
+        <!-- Relayer → Forwarder contract -->
+        <line x1="400" y1="525" x2="400" y2="633" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="415" y="580" fill="#fb923c" font-size="8">3. Ejecuta tx</text>
+
+        <!-- Relayer → HSK RPC -->
+        <line x1="645" y1="525" x2="645" y2="633" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="660" y="580" fill="#fbbf24" font-size="8">4. RPC call</text>
+
+        <!-- User A → User B (P2P) -->
+        <path d="M 320 90 Q 445 30 570 90"
+              fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-green)"/>
+        <text x="445" y="50" fill="#34d399" font-size="8">P2P: QR / BT / NFC</text>
+
+        <!-- Vault ↔ USDC (internal) -->
+        <line x1="500" y1="695" x2="545" y2="695" stroke="#34d399" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="522" y="688" fill="#34d399" font-size="8">USDC</text>
+
+        <!-- Vault ↔ Forwarder (internal) -->
+        <line x1="300" y1="695" x2="255" y2="695" stroke="#34d399" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="277" y="688" fill="#34d399" font-size="8">transfer</text>
+
+        <!-- SyncManager → Relayer -->
+        <line x1="830" y1="315" x2="255" y2="315"
+              fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-green)"/>
+        <text x="500" y="308" fill="#34d399" font-size="8">Sync: ejecuta cola offline</text>
+
+        <!-- Faucet → USDC -->
+        <line x1="790" y1="695" x2="745" y2="695" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="767" y="688" fill="#fb7185" font-size="8">mint()</text>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LEGEND                                                -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+
+        <rect x="30" y="25" width="1100" height="1" fill="#1e293b"/>
+
+        <text x="960" y="40" fill="white" font-size="9" font-weight="600">Leyenda</text>
+
+        <rect x="960" y="50" width="12" height="8" rx="2" fill="rgba(8,51,68,0.5)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="978" y="58" fill="#94a3b8" font-size="8">App (Frontend)</text>
+
+        <rect x="960" y="65" width="12" height="8" rx="2" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="1"/>
+        <text x="978" y="73" fill="#94a3b8" font-size="8">Relayer</text>
+
+        <rect x="960" y="80" width="12" height="8" rx="2" fill="rgba(76,29,149,0.25)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="978" y="88" fill="#94a3b8" font-size="8">Forwarder (ERC-2771)</text>
+
+        <rect x="960" y="95" width="12" height="8" rx="2" fill="rgba(6,78,59,0.25)" stroke="#34d399" stroke-width="1"/>
+        <text x="978" y="103" fill="#94a3b8" font-size="8">Vault (Custody)</text>
+
+        <rect x="960" y="110" width="12" height="8" rx="2" fill="rgba(8,51,68,0.25)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="978" y="118" fill="#94a3b8" font-size="8">Token (ERC-20)</text>
+
+        <rect x="960" y="125" width="12" height="8" rx="2" fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="978" y="133" fill="#94a3b8" font-size="8">Blockchain / RPC</text>
+
+        <rect x="960" y="140" width="12" height="8" rx="2" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="978" y="148" fill="#94a3b8" font-size="8">Usuario</text>
+
+        <line x1="960" y1="162" x2="980" y2="162" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-cyan)"/>
+        <text x="988" y="165" fill="#94a3b8" font-size="8">Online</text>
+
+        <line x1="960" y1="177" x2="980" y2="177" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-amber)"/>
+        <text x="988" y="180" fill="#94a3b8" font-size="8">Offline</text>
+
+        <line x1="960" y1="192" x2="980" y2="192" stroke="#34d399" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-green)"/>
+        <text x="988" y="195" fill="#94a3b8" font-size="8">P2P / Sync</text>
+
+      </svg>
+    </div>
+
+    <p class="footer">
+      NoConnectionNeeded · feature/hsk-compatibility · HashKey Chain Testnet (133) · September 2026
+    </p>
+  </div>
+</body>
+</html>
